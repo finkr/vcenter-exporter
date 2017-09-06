@@ -67,7 +67,8 @@ def main():
 
     # get the datacenter info
     datacenter = si.content.rootFolder.childEntity[0]
-    logging.debug('datacenter name: ' + datacenter.name)
+    datacentername = datacenter.name
+    logging.debug('datacenter name: ' + datacentername)
 
     # create a list of vim.VirtualMachine objects so that we can query them for statistics
     container = content.rootFolder
@@ -210,7 +211,7 @@ def main():
                                       '.', '_')].labels(
                                           annotations['name'],
                                           annotations['projectid'],
-                                          datacenter.name,
+                                          datacentername,
                                           shorter_names_regex.sub('',hostsystemsdict[runtime_host]),
                                           instance_uuid,
                                           metric_detail
