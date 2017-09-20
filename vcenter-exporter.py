@@ -389,7 +389,7 @@ def main():
         # metrics coverage (i.e. we get the metrics quicker than the averaging time)
         loop_sleep_time = 0.9 * interval - (loop_end_time - loop_start_time)
         if loop_sleep_time < 0:
-            logging.warn('getting the metrics takes longer than ' + str(interval) + ' seconds - please increase the interval setting')
+            logging.warn('getting the metrics takes around ' + str(interval) + ' seconds or longer - please increase the interval setting')
             loop_sleep_time = 0
 
         logging.debug('====> loop end before sleep: %s' % datetime.now())
