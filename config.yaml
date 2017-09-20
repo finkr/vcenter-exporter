@@ -4,9 +4,11 @@ main:
     password: 'password'
     port: 443
     ignore_ssl: True
-    interval: 60
+    interval: 300
     log: INFO
     shorter_names_regex: '\.some\.domain\.name'
+    host_match_regex: '.*buildingblock-xy.*'
+    ignore_match_regex: '^testvmware.*'
     vm_metrics:
     - 'cpu.usage.average'
     - 'cpu.usagemhz.average'

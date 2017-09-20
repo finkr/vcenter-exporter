@@ -44,3 +44,8 @@ USAGE:
   python vcenter-export.py
   --config, -c config.yaml
 ```
+
+
+## Changelog
+
+2017/09/20 we now use the property collector to get the vm properties instead of a view, which speeds up things quite a bit (thanks to http://www.errr-online.com/index.php/2014/10/06/using-pyvmomi-to-get-a-list-of-all-virtual-machines-fast/ and https://github.com/vmware/pyvmomi-community-samples/blob/master/samples/vminfo_quick.py for inspiration). besides that we introduced the possibility to select the vms we get metrics for via a regex over the host-system to have an easy way to split the work over multiple exporters and we introduced another regex to exclude certain vms by name (for instance test instances etc.). we did experiment a bit with multithreading as well, but the prometheus python client is not really multiprocess aware in a nice way (there is a way, but its quite complexi and ugly).
