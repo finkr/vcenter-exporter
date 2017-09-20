@@ -163,7 +163,6 @@ def main():
             pwd=config.get('main').get('password'),
             port=int(config.get('main').get('port')),
             sslContext=context)
-        vchtime = si.CurrentTime()
         atexit.register(Disconnect, si)
 
     except IOError as e:
@@ -288,6 +287,12 @@ def main():
 
         count_vms = 0
 
+        # define the time range in seconds the metric data from the vcenter should be averaged across
+        # all based on vcenter time
+        vchtime = si.CurrentTime()
+        startTime = vchtime - timedelta(seconds=(interval + 60))
+        endTime = vchtime - timedelta(seconds=60)
+
         # loop over all vmware machines
         for vm in vm_data:
             try:
@@ -322,10 +327,6 @@ def main():
                         vim.PerformanceManager.MetricId(
                             counterId=i, instance="*") for i in counterIDs
                     ]
-
-                    # define the time range in seconds the metric data from the vcenter should be averaged across
-                    startTime = vchtime - timedelta(seconds=(interval + 1))
-                    endTime = vchtime - timedelta(seconds=1)
 
                     # query spec for the metric stats query, the intervallId is the default one
                     logging.debug(
@@ -388,7 +389,7 @@ def main():
         # metrics coverage (i.e. we get the metrics quicker than the averaging time)
         loop_sleep_time = 0.9 * interval - (loop_end_time - loop_start_time)
         if loop_sleep_time < 0:
-            logging.info('WARNING: getting the metrics takes longer than ' + str(interval) + ' seconds - please increase the interval setting')
+            logging.warn('getting the metrics takes longer than ' + str(interval) + ' seconds - please increase the interval setting')
             loop_sleep_time = 0
 
         logging.debug('====> loop end before sleep: %s' % datetime.now())
