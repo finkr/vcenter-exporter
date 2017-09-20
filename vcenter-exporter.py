@@ -379,9 +379,10 @@ def main():
             except IndexError:
                 logging.info('a machine disappeared during processing')
 
-        logging.info('number of vms we got metrics for: ' + str(count_vms))
-
         loop_end_time = int(time.time())
+
+        logging.info('number of vms we got metrics for: ' + str(count_vms) + ' - actual runtime: ' + str(loop_end_time - loop_start_time) + 's')
+
         # this is the time we sleep to fill the loop runtime until it reaches "interval"
         # the 0.9 makes sure we have some overlap to the last interval to avoid gaps in
         # metrics coverage (i.e. we get the metrics quicker than the averaging time)
