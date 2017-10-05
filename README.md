@@ -8,12 +8,13 @@ The name is a construction of: counterid.groupInfo.key + "." + counterid.nameInf
 an example:
 
 ```
-cpu.usage.average
-disk.usage.average
-mem.usage.average
-mem.overhead.average
-mem.swapinRate.average
-mem.swapoutRate.average
+  - 'cpu.latency.average'
+  - 'disk.usage.average'
+  - 'mem.usage.average'
+  - 'net.usage.average'
+  - 'virtualDisk.read.average'
+  - 'virtualDisk.totalReadLatency.average'
+  - 'virtualDisk.totalWriteLatency.average'
 ...
 ```
 
@@ -21,7 +22,16 @@ mem.swapoutRate.average
 The metrics are only collected for vms, which are in state "poweredOn" and have an annotation field (child.summary.config.annotation), which starts with "name:" otherwise
 we cannot attach the openstack specific metadata to the collected metrics, which are definied in the annotation field of each vm like Openstack vm name and Openstack project id.
 
+Labels available:
 
+```
+  - vmware_name
+  - project_id
+  - vcenter_name
+  - vcenter_node
+  - instance_uuid
+  - datastore
+```
 
 ## Installation
 

@@ -28,7 +28,7 @@ defaults = {
 # see: http://goo.gl/fjTEpW for all properties.
 vm_properties = [
     "runtime.powerState", "runtime.host", "config.annotation", "config.name",
-    "config.instanceUuid"
+     "config.instanceUuid", "summary.config.vmPathName"
 ]
 
 logger = logging.getLogger()
@@ -244,7 +244,7 @@ def main():
             'vcenter_' + fullName.replace('.', '_'),
             'vcenter_' + fullName.replace('.', '_'), [
                 'vmware_name', 'project_id', 'vcenter_name', 'vcenter_node',
-                'instance_uuid', 'metric_detail'
+                'instance_uuid', 'datastore', 'metric_detail'
             ])
 
     # in case we have a set of metric to handle, use those - otherwise use all we can get
@@ -322,6 +322,9 @@ def main():
                         s.split(':', 1)
                         for s in filter(None, annotation_lines))
 
+                    # datastore name
+                    datastore = vm["summary.config.vmPathName"].split('[', 1)[1].split(']')[0]
+
                     # get a list of metricids for this vm in preparation for the stats query
                     metricIDs = [
                         vim.PerformanceManager.MetricId(
@@ -373,6 +376,7 @@ def main():
                                           '',
                                           hostsystemsdict[vm["runtime.host"]]),
                                       vm["config.instanceUuid"],
+                                      datastore,
                                       metric_detail).set(val.value[0])
                     logging.debug('==> gauge loop end: %s' % datetime.now())
                     count_vms += 1
