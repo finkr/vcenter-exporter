@@ -24,15 +24,7 @@ defaults = {
     'ignore_ssl': True
 }
 
-# list of vm properties we are using and which we get via property collector later
-# see: http://goo.gl/fjTEpW for all properties.
-vm_properties = [
-    "runtime.powerState", "runtime.host", "config.annotation", "config.name",
-     "config.instanceUuid", "summary.config.vmPathName"
-]
-
 logger = logging.getLogger()
-
 
 # Shamelessly borrowed from:
 # https://github.com/dnaeon/py-vconnector/blob/master/src/vconnector/core.py
@@ -136,8 +128,27 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-c", "--config", help="Specify config file", metavar="FILE")
+    parser.add_argument(
+        "-d", "--datastore", help="Get metrics for datastores instead of vms", action='store_true')
     args, remaining_argv = parser.parse_known_args()
     config = YamlConfig(args.config, defaults)
+
+    # list of vm properties we are using and which we get via property collector later
+    # see: http://goo.gl/fjTEpW for all properties.
+    # once for vms and once for datastores ... and some other stuff, which differs for the two cases
+    if args.datastore == False:
+      my_properties = [
+          "runtime.powerState", "runtime.host", "config.annotation", "config.name",
+           "config.instanceUuid", "config.guestId", "summary.config.vmPathName"
+      ]
+      my_name = "vm"
+      my_obj_type = vim.VirtualMachine
+    else:
+      my_properties = [
+         "summary.accessible", "summary.capacity", "summary.freeSpace", "summary.maintenanceMode", "summary.name", "summary.type", "summary.url", "overallStatus"
+      ]
+      my_name = "datastore"
+      my_obj_type = vim.Datastore
 
     # set default log level if not defined in config file
     if config.get('main').get('log'):
@@ -179,9 +190,9 @@ def main():
     datacentername = datacenter.name
     logging.debug('datacenter name: ' + datacentername)
 
-    # create a list of vim.VirtualMachine objects so that we can query them for statistics
+    # create a list of vim.VirtualMachine / vim.Datastore objects so that we can query them for statistics
     container = content.rootFolder
-    viewType = [vim.VirtualMachine]
+    viewType = [my_obj_type]
     recursive = True
 
     # initialize some variables
@@ -226,35 +237,43 @@ def main():
     # counterInfo: [performance stat => counterId]
     # performance stat example: cpu.usagemhz.LATEST
     # counterId example: 6
-    # level defines the amouts of metrics available and its default setting in the vcenter here is 4
-    counterids = perfManager.QueryPerfCounterByLevel(level=4)
+    # level defines the amounts of metrics available and its default setting in the vcenter here is 1
+    counterids = perfManager.QueryPerfCounterByLevel(level=1)
 
     # start up the http server to expose the prometheus metrics
     start_http_server(int(config.get('main').get('listen_port')))
 
-    logging.debug('list of all available metrics and their counterids')
-    # loop over all counterids and build their full name and a dict relating it to the ids
-    for c in counterids:
-        fullName = c.groupInfo.key + "." + c.nameInfo.key + "." + c.rollupType
-        logging.debug(fullName + ': ' + str(c.key))
-        counterInfo[fullName] = c.key
+    if args.datastore == False:
+      logging.debug('list of all available metrics and their counterids')
+      # loop over all counterids and build their full name and a dict relating it to the ids
+      for c in counterids:
+          fullName = c.groupInfo.key + "." + c.nameInfo.key + "." + c.rollupType
+          logging.debug(fullName + ': ' + str(c.key))
+          counterInfo[fullName] = c.key
 
-        # define a dict of gauges for the counter ids
-        gauge['vcenter_' + fullName.replace('.', '_')] = Gauge(
-            'vcenter_' + fullName.replace('.', '_'),
-            'vcenter_' + fullName.replace('.', '_'), [
-                'vmware_name', 'project_id', 'vcenter_name', 'vcenter_node',
-                'instance_uuid', 'datastore', 'metric_detail'
-            ])
+          # define a dict of vm gauges for the counter ids
+          gauge['vcenter_' + fullName.replace('.', '_')] = Gauge(
+              'vcenter_' + fullName.replace('.', '_'),
+              'vcenter_' + fullName.replace('.', '_'), [
+                  'vmware_name', 'project_id', 'vcenter_name', 'vcenter_node',
+                  'instance_uuid', 'guest_id', 'datastore', 'metric_detail'
+              ])
 
-    # in case we have a set of metric to handle, use those - otherwise use all we can get
-    selected_metrics = config.get('main').get('vm_metrics')
-    if selected_metrics:
-        counterIDs = [
-            counterInfo[i] for i in selected_metrics if i in counterInfo
-        ]
+      # in case we have a configured set of metrics to handle, use those - otherwise use all we can get
+      selected_metrics = config.get('main').get('vm_metrics')
+      if selected_metrics:
+          counterIDs = [
+              counterInfo[i] for i in selected_metrics if i in counterInfo
+          ]
+      else:
+          counterIDs = [i.key for i in counterids]
     else:
-        counterIDs = [i.key for i in counterids]
+        # define the gauges - they have to be defined by hand for the datastores, as there is no clear pattern behind
+        gauge['vcenter_datastore_accessible'] = Gauge('vcenter_datastore_accessible', 'vcenter_datastore_accessible', ['datastore_name', 'datastore_type', 'datastore_url'])
+        gauge['vcenter_datastore_capacity'] = Gauge('vcenter_datastore_capacity', 'vcenter_datastore_capacity', ['datastore_name', 'datastore_type', 'datastore_url'])
+        gauge['vcenter_datastore_freespace'] = Gauge('vcenter_datastore_freespace', 'vcenter_datastore_freespace', ['datastore_name', 'datastore_type', 'datastore_url'])
+        gauge['vcenter_datastore_maintenancemode'] = Gauge('vcenter_datastore_maintenancemode', 'vcenter_datastore_maintenancemode', ['datastore_name', 'datastore_type', 'datastore_url'])
+        gauge['vcenter_datastore_overallstatus'] = Gauge('vcenter_datastore_overallstatus', 'vcenter_datastore_overallstatus', ['datastore_name', 'datastore_type', 'datastore_url'])
 
     # infinite loop for getting the metrics
     while True:
@@ -262,30 +281,32 @@ def main():
         # get the start time of the loop to be able to fill it to intervall exactly at the end
         loop_start_time = int(time.time())
 
-        # get all the data regarding vcenter hosts
-        hostView = content.viewManager.CreateContainerView(
-            container, [vim.HostSystem], recursive)
+        # first the vm metric case
+        if args.datastore == False:
+          # get all the data regarding vcenter hosts
+          hostView = content.viewManager.CreateContainerView(
+              container, [vim.HostSystem], recursive)
 
-        hostssystems = hostView.view
+          hostssystems = hostView.view
 
-        # build a dict to lookup the hostname by its id later
-        hostsystemsdict = {}
-        for host in hostssystems:
-            hostsystemsdict[host] = host.name
-        logging.debug(
-            'list of all available vcenter nodes and their internal id')
-        logging.debug(hostsystemsdict)
+          # build a dict to lookup the hostname by its id later
+          hostsystemsdict = {}
+          for host in hostssystems:
+              hostsystemsdict[host] = host.name
+          logging.debug(
+              'list of all available vcenter nodes and their internal id')
+          logging.debug(hostsystemsdict)
 
         # collect the properties we are interested in
-        view = get_container_view(si, obj_type=[vim.VirtualMachine])
-        vm_data = collect_properties(
+        view = get_container_view(si, obj_type=[my_obj_type])
+        my_data = collect_properties(
             si,
             view_ref=view,
-            obj_type=vim.VirtualMachine,
-            path_set=vm_properties,
+            obj_type=my_obj_type,
+            path_set=my_properties,
             include_mors=True)
 
-        count_vms = 0
+        my_count = 0
 
         # define the time range in seconds the metric data from the vcenter should be averaged across
         # all based on vcenter time
@@ -294,99 +315,153 @@ def main():
         endTime = vchtime - timedelta(seconds=60)
 
         # loop over all vmware machines
-        for vm in vm_data:
+        for item in my_data:
             try:
-                # only consider machines which have an annotation, are powered on, match our regex for the host system and are not in the ignore list
-                if (vm["runtime.powerState"] == "poweredOn" and
-                        openstack_match_regex.match(vm["config.annotation"]) and
-                        host_match_regex.match(
-                            hostsystemsdict[vm["runtime.host"]])
-                    ) and not ignore_match_regex.match(vm["config.name"]):
-                    logging.debug('current vm processed - ' +
-                                  vm["config.name"])
+                if args.datastore == False:
+                  # only consider machines which have an annotation, are powered on, match our regex for the host system and are not in the ignore list
+                  if (item["runtime.powerState"] == "poweredOn" and
+                          openstack_match_regex.match(item["config.annotation"]) and
+                          host_match_regex.match(
+                              hostsystemsdict[item["runtime.host"]])
+                      ) and not ignore_match_regex.match(item["config.name"]):
+                      logging.debug('current vm processed - ' +
+                                    item["config.name"])
 
-                    logging.debug('==> running on vcenter node: ' +
-                                  hostsystemsdict[vm["runtime.host"]])
+                      logging.debug('==> running on vcenter node: ' +
+                                    hostsystemsdict[item["runtime.host"]])
 
-                    # split the multi-line annotation into a dict per property (name, project-id, ...)
-                    annotation_lines = vm["config.annotation"].split('\n')
+                      # split the multi-line annotation into a dict per property (name, project-id, ...)
+                      annotation_lines = item["config.annotation"].split('\n')
 
-                    # rename flavor: to flavor_, so that it does not break the split on : below
-                    annotation_lines = [
-                        w.replace('flavor:', 'flavor_')
-                        for w in annotation_lines
-                    ]
+                      # rename flavor: to flavor_, so that it does not break the split on : below
+                      annotation_lines = [
+                          w.replace('flavor:', 'flavor_')
+                          for w in annotation_lines
+                      ]
 
-                    # the filter is for filtering out empty lines
-                    annotations = dict(
-                        s.split(':', 1)
-                        for s in filter(None, annotation_lines))
+                      # the filter is for filtering out empty lines
+                      annotations = dict(
+                          s.split(':', 1)
+                          for s in filter(None, annotation_lines))
 
-                    # datastore name
-                    datastore = vm["summary.config.vmPathName"].split('[', 1)[1].split(']')[0]
+                      # datastore name
+                      datastore = item["summary.config.vmPathName"].split('[', 1)[1].split(']')[0]
 
-                    # get a list of metricids for this vm in preparation for the stats query
-                    metricIDs = [
-                        vim.PerformanceManager.MetricId(
-                            counterId=i, instance="*") for i in counterIDs
-                    ]
+                      # get a list of metricids for this vm in preparation for the stats query
+                      metricIDs = [
+                          vim.PerformanceManager.MetricId(
+                              counterId=i, instance="*") for i in counterIDs
+                      ]
 
-                    # query spec for the metric stats query, the intervallId is the default one
-                    logging.debug(
-                        '==> vim.PerformanceManager.QuerySpec start: %s' %
-                        datetime.now())
-                    spec = vim.PerformanceManager.QuerySpec(
-                        maxSample=1,
-                        entity=vm["obj"],
-                        metricId=metricIDs,
-                        intervalId=20,
-                        startTime=startTime,
-                        endTime=endTime)
-                    logging.debug(
-                        '==> vim.PerformanceManager.QuerySpec end: %s' %
-                        datetime.now())
+                      # query spec for the metric stats query, the intervalId is the default one
+                      logging.debug(
+                          '==> vim.PerformanceManager.QuerySpec start: %s' %
+                          datetime.now())
+                      spec = vim.PerformanceManager.QuerySpec(
+                          maxSample=1,
+                          entity=item["obj"],
+                          metricId=metricIDs,
+                          intervalId=20,
+                          startTime=startTime,
+                          endTime=endTime)
+                      logging.debug(
+                          '==> vim.PerformanceManager.QuerySpec end: %s' %
+                          datetime.now())
 
-                    # get metric stats from vcenter
-                    logging.debug('==> perfManager.QueryStats start: %s' %
-                                  datetime.now())
-                    result = perfManager.QueryStats(querySpec=[spec])
-                    logging.debug(
-                        '==> perfManager.QueryStats end: %s' % datetime.now())
+                      # get metric stats from vcenter
+                      logging.debug('==> perfManager.QueryStats start: %s' %
+                                    datetime.now())
+                      result = perfManager.QueryStats(querySpec=[spec])
+                      logging.debug(
+                          '==> perfManager.QueryStats end: %s' % datetime.now())
 
-                    # loop over the metrics
-                    logging.debug('==> gauge loop start: %s' % datetime.now())
-                    for val in result[0].value:
-                        # send gauges to prometheus exporter: metricname and value with
-                        # labels: vm name, project id, vcenter name, vcneter
-                        # node, instance uuid and metric detail (for instance a partition
-                        # for io or an interface for net metrics) - we update the gauge
-                        # only if the value is not -1 which means the vcenter has no value
-                        if val.value[0] != -1:
-                            if val.id.instance == '':
-                                metric_detail = 'total'
-                            else:
-                                metric_detail = val.id.instance
-                            gauge['vcenter_' +
-                                  counterInfo.keys()[counterInfo.values()
-                                                     .index(val.id.counterId)]
-                                  .replace('.', '_')].labels(
-                                      annotations['name'],
-                                      annotations['projectid'], datacentername,
-                                      shorter_names_regex.sub(
-                                          '',
-                                          hostsystemsdict[vm["runtime.host"]]),
-                                      vm["config.instanceUuid"],
-                                      datastore,
-                                      metric_detail).set(val.value[0])
-                    logging.debug('==> gauge loop end: %s' % datetime.now())
-                    count_vms += 1
+                      # loop over the metrics
+                      logging.debug('==> gauge loop start: %s' % datetime.now())
+                      for val in result[0].value:
+                          # send gauges to prometheus exporter: metricname and value with
+                          # labels: vm name, project id, vcenter name, vcneter
+                          # node, instance uuid and metric detail (for instance a partition
+                          # for io or an interface for net metrics) - we update the gauge
+                          # only if the value is not -1 which means the vcenter has no value
+                          if val.value[0] != -1:
+                              if val.id.instance == '':
+                                  metric_detail = 'total'
+                              else:
+                                  metric_detail = val.id.instance
+                              gauge['vcenter_' +
+                                    counterInfo.keys()[counterInfo.values()
+                                                       .index(val.id.counterId)]
+                                    .replace('.', '_')].labels(
+                                        annotations['name'],
+                                        annotations['projectid'], datacentername,
+                                        shorter_names_regex.sub(
+                                            '',
+                                            hostsystemsdict[item["runtime.host"]]),
+                                        item["config.instanceUuid"],
+                                        item["config.guestId"],
+                                        datastore,
+                                        metric_detail).set(val.value[0])
+                      logging.debug('==> gauge loop end: %s' % datetime.now())
+                # alternatively the datastore metric case
+                else:
+                    logging.debug('current datastore processed - ' +
+                                  item["summary.name"])
+
+                    logging.debug('==> accessible: ' +
+                                  str(item["summary.accessible"]))
+                    # convert strings to numbers, so that we can generate a prometheus metric from them
+                    if item["summary.accessible"] == True:
+                      number_accessible = 1
+                    else:
+                      number_accessible = 0
+                    logging.debug('==> capacity: ' +
+                                  str(item["summary.capacity"]))
+                    logging.debug('==> freeSpace: ' +
+                                  str(item["summary.freeSpace"]))
+                    logging.debug('==> maintenanceMode: ' +
+                                  str(item["summary.maintenanceMode"]))
+                    # convert strings to numbers, so that we can generate a prometheus metric from them
+                    if item["summary.maintenanceMode"] == "normal":
+                      number_maintenanceMode = 0
+                    else:
+                      # fallback to note if we do not yet catch a value
+                      number_maintenanceMode = 99
+                      logging.info('unexpected maintenanceMode for datastore ' + item["summary.name"])
+                    logging.debug('==> type: ' +
+                                  str(item["summary.type"]))
+                    logging.debug('==> url: ' +
+                                  str(item["summary.url"]))
+                    logging.debug('==> overallStatus: ' +
+                                  str(item["overallStatus"]))
+                    # convert strings to numbers, so that we can generate a prometheus metric from them
+                    if item["overallStatus"] == "green":
+                      number_overallStatus = 0
+                    elif item["overallStatus"] == "yellow":
+                      number_overallStatus = 1
+                    elif item["overallStatus"] == "red":
+                      number_overallStatus = 2
+                    else:
+                      # fallback to note if we do not yet catch a value
+                      number_overallStatus = 99
+                      logging.info('unexpected overallStatus for datastore ' + item["summary.name"])
+
+                    # set the gauges for the datastore properties
+                    logging.debug('==> gauge start: %s' % datetime.now())
+                    gauge['vcenter_datastore_accessible'].labels(item["summary.name"],item["summary.type"],item["summary.url"]).set(number_accessible)
+                    gauge['vcenter_datastore_capacity'].labels(item["summary.name"],item["summary.type"],item["summary.url"]).set(item["summary.capacity"])
+                    gauge['vcenter_datastore_freespace'].labels(item["summary.name"],item["summary.type"],item["summary.url"]).set(item["summary.freeSpace"])
+                    gauge['vcenter_datastore_maintenancemode'].labels(item["summary.name"],item["summary.type"],item["summary.url"]).set(number_maintenanceMode)
+                    gauge['vcenter_datastore_overallstatus'].labels(item["summary.name"],item["summary.type"],item["summary.url"]).set(number_overallStatus)
+                    logging.debug('==> gauge end: %s' % datetime.now())
+
+                my_count += 1
 
             except IndexError:
-                logging.info('a machine disappeared during processing')
+                logging.info('a ' + my_name + ' disappeared during processing')
 
         loop_end_time = int(time.time())
 
-        logging.info('number of vms we got metrics for: ' + str(count_vms) + ' - actual runtime: ' + str(loop_end_time - loop_start_time) + 's')
+        logging.info('number of ' + my_name + 's we got metrics for: ' + str(my_count) + ' - actual runtime: ' + str(loop_end_time - loop_start_time) + 's')
 
         # this is the time we sleep to fill the loop runtime until it reaches "interval"
         # the 0.9 makes sure we have some overlap to the last interval to avoid gaps in
