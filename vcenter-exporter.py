@@ -238,7 +238,7 @@ def main():
     # performance stat example: cpu.usagemhz.LATEST
     # counterId example: 6
     # level defines the amounts of metrics available and its default setting in the vcenter here is 1
-    counterids = perfManager.QueryPerfCounterByLevel(level=1)
+    counterids = perfManager.QueryPerfCounterByLevel(level=4)
 
     # start up the http server to expose the prometheus metrics
     start_http_server(int(config.get('main').get('listen_port')))
@@ -425,7 +425,7 @@ def main():
                       number_maintenanceMode = 0
                     else:
                       # fallback to note if we do not yet catch a value
-                      number_maintenanceMode = 99
+                      number_maintenanceMode = -1
                       logging.info('unexpected maintenanceMode for datastore ' + item["summary.name"])
                     logging.debug('==> type: ' +
                                   str(item["summary.type"]))
@@ -442,7 +442,7 @@ def main():
                       number_overallStatus = 2
                     else:
                       # fallback to note if we do not yet catch a value
-                      number_overallStatus = 99
+                      number_overallStatus = -1
                       logging.info('unexpected overallStatus for datastore ' + item["summary.name"])
 
                     # set the gauges for the datastore properties
