@@ -35,7 +35,7 @@ class VcenterExporter():
 
         # Make sure required parameters are present
         required_parameters = {'listen_port', 'host', 'user', 'password',
-                               'availability_zone', 'ignore_ssl', 'interval'}
+                               'ignore_ssl', 'interval'}
         if not required_parameters.issubset(set(configs['main'].keys())):
             sys.exit("Provide at least " + ' '.join(required_parameters) + " parameters")
 
