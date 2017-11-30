@@ -176,7 +176,7 @@ class VcenterExporter():
 
     def setup_versions(self):
 
-        self.gauge['vcenter_vcenter_esx_node_info'] = Gauge('vcenter_esx_node_info', 'vcenter_esx_node_info',
+        self.gauge['vcenter_esx_node_info'] = Gauge('vcenter_esx_node_info', 'vcenter_esx_node_info',
                                        ['hostname', 'version', 'build'])
         self.gauge['vcenter_vcenter_node_info'] = Gauge('vcenter_vcenter_node_info', 'vcenter_vcenter_node_info',
                                            ['hostname', 'version', 'build'])
