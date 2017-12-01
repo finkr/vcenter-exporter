@@ -177,9 +177,9 @@ class VcenterExporter():
     def setup_versions(self):
 
         self.gauge['vcenter_esx_node_info'] = Gauge('vcenter_esx_node_info', 'vcenter_esx_node_info',
-                                       ['hostname', 'version', 'build'])
+                                       ['hostname', 'version', 'build', 'region'])
         self.gauge['vcenter_vcenter_node_info'] = Gauge('vcenter_vcenter_node_info', 'vcenter_vcenter_node_info',
-                                           ['hostname', 'version', 'build'])
+                                           ['hostname', 'version', 'build', 'region'])
 
     def get_cust_vm_metrics(self):
 
@@ -306,6 +306,7 @@ class VcenterExporter():
 
     def get_versions_metrics(self):
 
+        region = self.configs['main']['host'].split('.')[2]
         self.metric_count = 0
         logging.debug('get clusters from content')
         content = self.si.RetrieveContent()
@@ -318,7 +319,7 @@ class VcenterExporter():
         logging.debug(self.configs['main']['host'] + ": " + content.about.version)
         self.gauge['vcenter_vcenter_node_info'].labels(self.configs['main']['host'],
                                                content.about.version,
-                                               content.about.build).set(1)
+                                               content.about.build, region).set(1)
         self.metric_count += 1
 
         logging.debug('get version information for each esx host')
@@ -327,7 +328,7 @@ class VcenterExporter():
                 logging.debug(host.name + ": " + host.config.product.version)
                 self.gauge['vcenter_esx_node_info'].labels(host.name,
                                                    host.config.product.version,
-                                                   host.config.product.build).set(1)
+                                                   host.config.product.build, region).set(1)
                 self.metric_count += 1
 
     def get_cust_ds_metrics(self):
