@@ -22,22 +22,19 @@ from datetime import timedelta, datetime
 class VcenterExporter():
 
     # Supported exporter types - Checked on CLI
-    supported_types=['CUSTVM', 'CUSTDS', 'VERSIONS', 'INFRAESX', 'VCAPI']
+    supported_types=['CUSTVM', 'CUSTDS', 'VERSIONS', 'INFRAESX', 'VCHEALTH']
 
     # vcenter connection defaults
     defaults = {
         'ignore_ssl': True,
         'port': 443,
-        'interval': 5
+        'interval': 5,
+        'hostname': 'localhost',
+        'user': 'administrator@vsphere.local',
+        'password': 'password'
     }
 
     def __init__(self, configs, exporter_type):
-
-        # Make sure required parameters are present
-        required_parameters = {'listen_port', 'host', 'user', 'password',
-                               'ignore_ssl', 'interval'}
-        if not required_parameters.issubset(set(configs['main'].keys())):
-            sys.exit("Provide at least " + ' '.join(required_parameters) + " parameters")
 
         # Set vars to local object vars
         self.exporter_type = exporter_type.upper()
@@ -72,9 +69,9 @@ class VcenterExporter():
         self.function_list = {
             "CUSTVM": [self.setup_cust_vm, self.get_cust_vm_metrics],
             "CUSTDS": [self.setup_cust_ds, self.get_cust_ds_metrics],
-            "VERSIONS": [self.setup_versions, self.get_versions_metrics]
-            # "INFRAESX":
-            # "VCAPI":
+            "VERSIONS": [self.setup_versions, self.get_versions_metrics],
+            "VCHEALTH": [self.setup_vc_health, self.get_vc_health_metrics]
+            "INFRAESX": [self.setup_infra_esx, self.get_infra_esx_metrics]
         }
 
         # Start logging
@@ -191,6 +188,12 @@ class VcenterExporter():
                                        ['hostname', 'version', 'build', 'region'])
         self.gauge['vcenter_vcenter_node_info'] = Gauge('vcenter_vcenter_node_info', 'vcenter_vcenter_node_info',
                                            ['hostname', 'version', 'build', 'region'])
+
+    def setup_vc_health(self):
+        pass
+
+    def setup_infra_esx(self):
+        pass
 
     def get_cust_vm_metrics(self):
 
@@ -405,6 +408,12 @@ class VcenterExporter():
 
             except IndexError:
                 logging.info('a vm disappeared during processing')
+
+    def get_vc_health_metrics(self):
+        pass
+
+    def get_infra_esx_metrics(self):
+        pass
 
     def collect_metrics(self):
 
