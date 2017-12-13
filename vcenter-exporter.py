@@ -31,7 +31,8 @@ class VcenterExporter():
         'interval': 5,
         'hostname': 'localhost',
         'user': 'administrator@vsphere.local',
-        'password': 'password'
+        'password': 'password',
+        'listen_port': 9102
     }
 
     def __init__(self, configs, exporter_type):
