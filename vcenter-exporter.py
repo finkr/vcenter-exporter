@@ -71,7 +71,7 @@ class VcenterExporter():
             "CUSTVM": [self.setup_cust_vm, self.get_cust_vm_metrics],
             "CUSTDS": [self.setup_cust_ds, self.get_cust_ds_metrics],
             "VERSIONS": [self.setup_versions, self.get_versions_metrics],
-            "VCHEALTH": [self.setup_vc_health, self.get_vc_health_metrics]
+            "VCHEALTH": [self.setup_vc_health, self.get_vc_health_metrics],
             "INFRAESX": [self.setup_infra_esx, self.get_infra_esx_metrics]
         }
 
