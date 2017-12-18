@@ -158,6 +158,17 @@ class VcenterExporter():
             else:
                 self.regexs[regular_expression] = re.compile('')
 
+        # Create the host_view of the vcenter
+        content = self.si.RetrieveContent()
+        self.perf_manager = content.perfManager
+        container = content.rootFolder
+        datacenter = content.rootFolder.childEntity[0]
+        self.datacentername = datacenter.name
+
+        # get all the data regarding vcenter hosts
+        self.host_view = content.viewManager.CreateContainerView(
+            container, [vim.HostSystem], True)
+
     def setup_cust_ds(self):
 
         # define the gauges - they have to be defined by hand for the datastores, as there is no clear pattern behind
@@ -183,17 +194,8 @@ class VcenterExporter():
 
     def get_cust_vm_metrics(self):
 
-        content = self.si.RetrieveContent()
-        perf_manager = content.perfManager
-        container = content.rootFolder
-        datacenter = content.rootFolder.childEntity[0]
-        datacentername = datacenter.name
-
-        # get all the data regarding vcenter hosts
-        host_view = content.viewManager.CreateContainerView(
-            container, [vim.HostSystem], True)
-
-        hostssystems = host_view.view
+        # Get all of the vms in the system from the host_view
+        hostssystems = self.host_view.view
 
         # build a dict to lookup the hostname by its id later
         hostsystemsdict = {}
@@ -266,7 +268,7 @@ class VcenterExporter():
                     # get metric stats from vcenter
                     logging.debug('==> perfManager.QueryStats start: %s' %
                                   datetime.now())
-                    result = perf_manager.QueryStats(querySpec=[spec])
+                    result = self.perf_manager.QueryStats(querySpec=[spec])
                     logging.debug(
                         '==> perfManager.QueryStats end: %s' % datetime.now())
 
@@ -289,7 +291,7 @@ class VcenterExporter():
                                        .index(val.id.counterId)]
                                        .replace('.', '_')].labels(
                                 annotations['name'],
-                                annotations['projectid'], datacentername,
+                                annotations['projectid'], self.datacentername,
                                 self.regexs['shorter_names_regex'].sub(
                                     '',
                                     hostsystemsdict[item["runtime.host"]]),
