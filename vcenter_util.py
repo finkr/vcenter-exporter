@@ -1,18 +1,5 @@
 from pyVmomi import vim, vmodl
 
-
-def get_vcenter_data(si, object_type, entity_properties):
-    view = get_container_view(si, obj_type=[object_type])
-    data = collect_properties(
-        si,
-        view_ref=view,
-        obj_type=object_type,
-        path_set=entity_properties,
-        include_mors=True)
-
-    return data
-
-
 # Shamelessly borrowed from:
 # https://github.com/dnaeon/py-vconnector/blob/master/src/vconnector/core.py
 def collect_properties(service_instance, view_ref, obj_type, path_set=None,
@@ -77,24 +64,3 @@ def collect_properties(service_instance, view_ref, obj_type, path_set=None,
 
         data.append(properties)
     return data
-
-
-def get_container_view(service_instance, obj_type, container=None):
-    """
-    Get a vSphere Container View reference to all objects of type 'obj_type'
-    It is up to the caller to take care of destroying the View when no longer
-    needed.
-    Args:
-        obj_type (list): A list of managed object types
-    Returns:
-        A container view ref to the discovered managed objects
-    """
-    if not container:
-        container = service_instance.content.rootFolder
-
-    view_ref = service_instance.content.viewManager.CreateContainerView(
-        container=container,
-        type=obj_type,
-        recursive=True
-    )
-    return view_ref

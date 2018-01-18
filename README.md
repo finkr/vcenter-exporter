@@ -1,9 +1,15 @@
 # vcenter-exporter
-Prometheus vcenter exporter
+Generic vcenter exporter
 
 
-This is a Prometheus exporter, which collects virtual machines, performance metrics from vsphere api. 
-The metric names, which can be defined in the config file are a construct of different fields in counterids.
+This is a vcenter exporter, which collects various metrics and information from a vCenter dependent on the provided flags.
+The current available exporter types are:
+```
+  - custvm: exports metrics for customer vms
+  - custds: exports metrics for customer datastores
+  - versions: exports versions of vcenter and esx hosts
+
+The metric names (for custvm and custds), which can be defined in the config file are a construct of different fields in counterids.
 The name is a construction of: counterid.groupInfo.key + "." + counterid.nameInfo.key + "." + counterid.rollupType:
 an example:
 
@@ -19,7 +25,7 @@ an example:
 ```
 
 ### Openstack specific notes:
-The metrics are only collected for vms, which are in state "poweredOn" and have an annotation field (child.summary.config.annotation), which starts with "name:" otherwise
+The custvm metrics are only collected for vms, which are in state "poweredOn" and have an annotation field (child.summary.config.annotation), which starts with "name:" otherwise
 we cannot attach the openstack specific metadata to the collected metrics, which are definied in the annotation field of each vm like Openstack vm name and Openstack project id.
 
 Labels available:
@@ -52,7 +58,7 @@ NAME:
 
 USAGE:
   python vcenter-export.py
-  --config, -c config.yaml
+  --config, -c config.yaml -t exporter_type
 ```
 
 

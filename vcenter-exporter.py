@@ -14,30 +14,27 @@ import re
 import logging
 import time
 from vcenter_util import *
-
-
 from datetime import timedelta, datetime
 
 
 class VcenterExporter():
 
     # Supported exporter types - Checked on CLI
-    supported_types=['CUSTVM', 'CUSTDS', 'VERSIONS', 'INFRAESX', 'VCAPI']
+    supported_types = ['CUSTVM', 'CUSTDS', 'VERSIONS',
+                       'INFRAESX', 'VCHEALTH']
 
     # vcenter connection defaults
     defaults = {
         'ignore_ssl': True,
         'port': 443,
-        'interval': 5
+        'interval': 5,
+        'hostname': 'localhost',
+        'user': 'administrator@vsphere.local',
+        'password': 'password',
+        'listen_port': 9102
     }
 
     def __init__(self, configs, exporter_type):
-
-        # Make sure required parameters are present
-        required_parameters = {'listen_port', 'host', 'user', 'password',
-                               'ignore_ssl', 'interval'}
-        if not required_parameters.issubset(set(configs['main'].keys())):
-            sys.exit("Provide at least " + ' '.join(required_parameters) + " parameters")
 
         # Set vars to local object vars
         self.exporter_type = exporter_type.upper()
@@ -45,11 +42,12 @@ class VcenterExporter():
 
         # List of properties we want for VMs and datastores
         self.vm_properties = [
-          "runtime.powerState", "runtime.host", "config.annotation", "config.name",
-          "config.instanceUuid", "config.guestId", "summary.config.vmPathName"
+            "runtime.powerState", "runtime.host", "config.annotation", "config.name",
+            "config.instanceUuid", "config.guestId", "summary.config.vmPathName"
         ]
         self.datastore_properties = [
-            "summary.accessible", "summary.capacity", "summary.freeSpace", "summary.maintenanceMode", "summary.name",
+            "summary.accessible", "summary.capacity", "summary.freeSpace",
+            "summary.maintenanceMode", "summary.name",
             "summary.type", "summary.url", "overallStatus"
         ]
 
@@ -72,9 +70,9 @@ class VcenterExporter():
         self.function_list = {
             "CUSTVM": [self.setup_cust_vm, self.get_cust_vm_metrics],
             "CUSTDS": [self.setup_cust_ds, self.get_cust_ds_metrics],
-            "VERSIONS": [self.setup_versions, self.get_versions_metrics]
-            # "INFRAESX":
-            # "VCAPI":
+            "VERSIONS": [self.setup_versions, self.get_versions_metrics],
+            "VCHEALTH": [self.setup_vc_health, self.get_vc_health_metrics],
+            "INFRAESX": [self.setup_infra_esx, self.get_infra_esx_metrics]
         }
 
         # Start logging
@@ -97,6 +95,13 @@ class VcenterExporter():
 
         # Connect to the vCenter
         self.si = self.connect_to_vcenter()
+
+        # Create attributes for Containerviews
+        content = self.si.RetrieveContent()
+        self.perf_manager = content.perfManager
+        self.container = content.rootFolder
+        datacenter = content.rootFolder.childEntity[0]
+        self.datacentername = datacenter.name
 
     def connect_to_vcenter(self):
 
@@ -158,16 +163,18 @@ class VcenterExporter():
             else:
                 self.regexs[regular_expression] = re.compile('')
 
-        # Create the host_view of the vcenter
-        content = self.si.RetrieveContent()
-        self.perf_manager = content.perfManager
-        container = content.rootFolder
-        datacenter = content.rootFolder.childEntity[0]
-        self.datacentername = datacenter.name
-
         # get all the data regarding vcenter hosts
         self.host_view = content.viewManager.CreateContainerView(
-            container, [vim.HostSystem], True)
+            self.container, [vim.HostSystem], True)
+
+        # get vm containerview
+        if not self.container:
+            self.container = self.si.content.rootFolder
+        self.view_ref = self.si.content.viewManager.CreateContainerView(
+            container=self.container,
+            type=[vim.VirtualMachine],
+            recursive=True
+        )
 
     def setup_cust_ds(self):
 
@@ -184,6 +191,15 @@ class VcenterExporter():
         self.gauge['vcenter_datastore_overallstatus'] = Gauge('vcenter_datastore_overallstatus',
                                                          'vcenter_datastore_overallstatus',
                                                          ['datastore_name', 'datastore_type', 'datastore_url'])
+ 
+        # get datastore containerview
+        if not self.container:
+            self.container = self.si.content.rootFolder
+        self.view_ref = self.si.content.viewManager.CreateContainerView(
+            container=self.container,
+            type=[vim.Datastore],
+            recursive=True
+        )                                                        
 
     def setup_versions(self):
 
@@ -191,6 +207,18 @@ class VcenterExporter():
                                        ['hostname', 'version', 'build', 'region'])
         self.gauge['vcenter_vcenter_node_info'] = Gauge('vcenter_vcenter_node_info', 'vcenter_vcenter_node_info',
                                            ['hostname', 'version', 'build', 'region'])
+        self.content = self.si.RetrieveContent()
+        self.clusters = [cluster for cluster in
+                    self.content.viewManager.CreateContainerView(
+                        self.content.rootFolder, [vim.ComputeResource],
+                        recursive=True).view
+                    ]                                          
+
+    def setup_vc_health(self):
+        pass
+
+    def setup_infra_esx(self):
+        pass
 
     def get_cust_vm_metrics(self):
 
@@ -205,7 +233,8 @@ class VcenterExporter():
             'list of all available vcenter nodes and their internal id')
         logging.debug(hostsystemsdict)
 
-        data = get_vcenter_data(self.si, vim.VirtualMachine, self.vm_properties)
+        # get data
+        data = collect_properties(self.si, self.view_ref, vim.VirtualMachine, self.vm_properties, True)
         self.metric_count = 0
 
         # define the time range in seconds the metric data from the vcenter should be averaged across
@@ -306,36 +335,10 @@ class VcenterExporter():
             except IndexError:
                 logging.info('a vm dissapeared during processing')
 
-    def get_versions_metrics(self):
-
-        region = self.configs['main']['host'].split('.')[2]
-        self.metric_count = 0
-        logging.debug('get clusters from content')
-        content = self.si.RetrieveContent()
-        clusters = [cluster for cluster in
-                    content.viewManager.CreateContainerView(
-                        content.rootFolder, [vim.ComputeResource],
-                        recursive=True).view
-                    ]
-
-        logging.debug(self.configs['main']['host'] + ": " + content.about.version)
-        self.gauge['vcenter_vcenter_node_info'].labels(self.configs['main']['host'],
-                                               content.about.version,
-                                               content.about.build, region).set(1)
-        self.metric_count += 1
-
-        logging.debug('get version information for each esx host')
-        for cluster in clusters:
-            for host in cluster.host:
-                logging.debug(host.name + ": " + host.config.product.version)
-                self.gauge['vcenter_esx_node_info'].labels(host.name,
-                                                   host.config.product.version,
-                                                   host.config.product.build, region).set(1)
-                self.metric_count += 1
-
     def get_cust_ds_metrics(self):
 
-        data = get_vcenter_data(self.si, vim.Datastore, self.datastore_properties)
+        # get data
+        data = collect_properties(self.si, self.view_ref, vim.Datastore, self.datastore_properties, True)
         self.metric_count = 0
 
         # define the time range in seconds the metric data from the vcenter should be averaged across
@@ -405,6 +408,33 @@ class VcenterExporter():
 
             except IndexError:
                 logging.info('a vm disappeared during processing')
+
+    def get_versions_metrics(self):
+
+        region = self.configs['main']['host'].split('.')[2]
+        self.metric_count = 0
+        logging.debug('get clusters from content')
+
+        logging.debug(self.configs['main']['host'] + ": " + self.content.about.version)
+        self.gauge['vcenter_vcenter_node_info'].labels(self.configs['main']['host'],
+                                               self.content.about.version,
+                                               self.content.about.build, region).set(1)
+        self.metric_count += 1
+
+        logging.debug('get version information for each esx host')
+        for cluster in self.clusters:
+            for host in cluster.host:
+                logging.debug(host.name + ": " + host.config.product.version)
+                self.gauge['vcenter_esx_node_info'].labels(host.name,
+                                                   host.config.product.version,
+                                                   host.config.product.build, region).set(1)
+                self.metric_count += 1
+
+    def get_vc_health_metrics(self):
+        pass
+
+    def get_infra_esx_metrics(self):
+        pass
 
     def collect_metrics(self):
 
