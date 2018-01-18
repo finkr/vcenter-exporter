@@ -27,7 +27,7 @@ class VcenterExporter():
     defaults = {
         'ignore_ssl': True,
         'port': 443,
-        'interval': 5,
+        'interval': 15,
         'hostname': 'localhost',
         'user': 'administrator@vsphere.local',
         'password': 'password',
@@ -98,7 +98,6 @@ class VcenterExporter():
 
         # Create attributes for Containerviews
         content = self.si.RetrieveContent()
-        self.perf_manager = content.perfManager
         self.container = content.rootFolder
         datacenter = content.rootFolder.childEntity[0]
         self.datacentername = datacenter.name
@@ -125,7 +124,7 @@ class VcenterExporter():
 
     def setup_cust_vm(self):
 
-        content = self.si.RetrieveContent()
+        content = self.si.content
         perf_manager = content.perfManager
         vm_counter_ids = perf_manager.QueryPerfCounterByLevel(level=4)
 
@@ -242,6 +241,7 @@ class VcenterExporter():
         vch_time = self.si.CurrentTime()
         start_time = vch_time - timedelta(seconds=(self.configs['main']['interval'] + 60))
         end_time = vch_time - timedelta(seconds=60)
+        perf_manager = self.si.content.perfManager
 
         for item in data:
             try:
@@ -297,7 +297,7 @@ class VcenterExporter():
                     # get metric stats from vcenter
                     logging.debug('==> perfManager.QueryStats start: %s' %
                                   datetime.now())
-                    result = self.perf_manager.QueryStats(querySpec=[spec])
+                    result = perf_manager.QueryStats(querySpec=[spec])
                     logging.debug(
                         '==> perfManager.QueryStats end: %s' % datetime.now())
 
@@ -332,8 +332,10 @@ class VcenterExporter():
 
                 self.metric_count += 1
 
-            except IndexError:
-                logging.info('a vm dissapeared during processing')
+                logging.info("collected data for " + item['config.name'])
+
+            except IndexError as e:
+                logging.info("couldn't get perf data for " + item['config.name'])
 
     def get_cust_ds_metrics(self):
 
@@ -407,7 +409,7 @@ class VcenterExporter():
                 self.metric_count += 1
 
             except IndexError:
-                logging.info('a vm disappeared during processing')
+                logging.info("couldn't get perf data for " + item['config.name'])
 
     def get_versions_metrics(self):
 
