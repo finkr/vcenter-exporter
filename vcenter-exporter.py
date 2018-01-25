@@ -101,7 +101,7 @@ class VcenterExporter():
         self.container = content.rootFolder
         datacenter = content.rootFolder.childEntity[0]
         self.datacentername = datacenter.name
-        self.clustername = self.configs['main']['cluster_name']
+
 
     def connect_to_vcenter(self):
 
@@ -125,6 +125,7 @@ class VcenterExporter():
 
     def setup_cust_vm(self):
 
+        self.clustername = self.configs['main']['cluster_name']
         content = self.si.content
         perf_manager = content.perfManager
         vm_counter_ids = perf_manager.QueryPerfCounterByLevel(level=4)
@@ -246,8 +247,6 @@ class VcenterExporter():
             try:
                 if (item["runtime.powerState"] == "poweredOn" and
                         self.regexs['openstack_match_regex'].match(item["config.annotation"]) and
-                        #self.regexs['host_match_regex'].match(
-                        #    hostsystemsdict[item["runtime.host"]])
                         item["runtime.host"].parent.name == self.clustername
                         ) and not self.regexs['ignore_match_regex'].match(item["config.name"]):
                     logging.debug('current vm processed - ' +
