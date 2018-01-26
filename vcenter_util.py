@@ -1,4 +1,24 @@
 from pyVmomi import vim, vmodl
+from pyVim.connect import SmartConnect, Disconnect
+
+
+def connect_to_vcenter(host, user, pwd, port, context):
+
+    # connect to vcenter
+    try:
+        si = SmartConnect(
+            host=host,
+            user=user,
+            pwd=pwd,
+            port=port,
+            sslContext=context)
+
+    except IOError as e:
+        logging.error("Could not connect to vcenter." + str(e))
+
+    if not si:
+        raise SystemExit("Unable to connect to host with supplied info.")
+    return si
 
 # Shamelessly borrowed from:
 # https://github.com/dnaeon/py-vconnector/blob/master/src/vconnector/core.py
