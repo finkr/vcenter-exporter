@@ -40,6 +40,13 @@ class VcenterExporter():
         self.exporter_type = exporter_type.upper()
         self.configs = configs
 
+        # Create empty structures for use
+        self.gauge = {}
+        self.counter_info = {}
+        self.counter_ids_to_collect = []
+        self.regexs = {}
+        self.metric_count = 0
+
         # List of properties we want for VMs and datastores
         self.vm_properties = [
             "runtime.powerState", "runtime.host", "config.annotation", "config.name",
@@ -50,20 +57,6 @@ class VcenterExporter():
             "summary.maintenanceMode", "summary.name",
             "summary.type", "summary.url", "overallStatus"
         ]
-
-        # Create empty structures for use
-        self.gauge = {}
-        self.counter_info = {}
-        self.counter_ids_to_collect = []
-        self.regexs = {}
-        self.metric_count = 0
-
-        # check for insecure ssl option
-        if self.configs['main']['ignore_ssl'] and \
-                hasattr(ssl, "_create_unverified_context"):
-            self.context = ssl._create_unverified_context()
-        else:
-            self.context = None
 
         # exporter type to function dictionary:  Call appropriate functions for each exporter type
         self.function_map = {"SETGAUGES": 0, "GETMETRICS": 1}
@@ -93,35 +86,26 @@ class VcenterExporter():
         except Exception as e:
             print("Couldn't start exporter http:" + str(e))
 
-        # Connect to the vCenter
-        self.si = self.connect_to_vcenter()
+        # vCenter preparations
+        # check for insecure ssl option
+        if self.configs['main']['ignore_ssl'] and \
+                hasattr(ssl, "_create_unverified_context"):
+            self.context = ssl._create_unverified_context()
+        else:
+            self.context = None
 
+        # Connect to the vCenter
+        self.si = connect_to_vcenter(self.configs['main']['host'],
+                                     self.configs['main']['user'],
+                                     self.configs['main']['password'],
+                                     self.configs['main']['port'],
+                                     self.context)
+        atexit.register(Disconnect, self.si)
         # Create attributes for Containerviews
         content = self.si.RetrieveContent()
         self.container = content.rootFolder
         datacenter = content.rootFolder.childEntity[0]
         self.datacentername = datacenter.name
-
-
-    def connect_to_vcenter(self):
-
-        # connect to vcenter
-        try:
-            si = SmartConnect(
-                host=self.configs['main']['host'],
-                user=self.configs['main']['user'],
-                pwd=self.configs['main']['password'],
-                port=self.configs['main']['port'],
-                sslContext=self.context)
-            atexit.register(Disconnect, si)
-
-        except IOError as e:
-            logging.error("Could not connect to vcenter." + str(e))
-
-        if not si:
-            raise SystemExit("Unable to connect to host with supplied info.")
-
-        return si
 
     def setup_cust_vm(self):
 
@@ -133,26 +117,30 @@ class VcenterExporter():
         # Store all counter information in self.counter_info and create gauges
         logging.debug('list of all available metrics and their counterids')
         for vm_counter_id in vm_counter_ids:
+
             full_name = '.'.join([vm_counter_id.groupInfo.key, vm_counter_id.nameInfo.key,
-                                 vm_counter_id.rollupType])
+                                  vm_counter_id.rollupType])
             logging.debug(full_name + ": ", str(vm_counter_id.key))
             self.counter_info[full_name] = vm_counter_id.key
-
-            vc_gauge = 'vcenter_' + full_name.replace('.', '_')
-            self.gauge[vc_gauge] = Gauge(vc_gauge, vc_gauge, [
-                'vmware_name', 'project_id', 'vcenter_name', 'vcenter_node',
-                'instance_uuid', 'guest_id', 'datastore', 'metric_detail'
-            ])
 
         selected_metrics = config.get('main').get('vm_metrics')
 
         # Populate counter_ids_to_collect from config if specified
         if selected_metrics:
-            self.counter_ids_to_collect = [self.counter_info[i] for i in selected_metrics if i in self.counter_info]
+            self.counter_ids_to_collect = [self.counter_info[i] for i in selected_metrics
+                                           if i in self.counter_info]
         else:
             self.counter_ids_to_collect = [i.key for i in self.counter_info]
+        for counter_id in selected_metrics:
+            # vc_gauge = 'vcenter_' + full_name.replace('.', '_')
+            vc_gauge = 'vcenter_' + counter_id.replace('.', '_')
+            self.gauge[vc_gauge] = Gauge(vc_gauge, vc_gauge, [
+                'vmware_name', 'project_id', 'vcenter_name', 'vcenter_node',
+                'instance_uuid', 'guest_id', 'datastore', 'metric_detail'
+            ])
 
-        # compile a regex for trying to filter out openstack generated vms - they all have the "name:" field set
+        # compile a regex for trying to filter out openstack generated vms
+        # they all have the "name:" field set
         self.regexs['openstack_match_regex'] = re.compile("^name")
 
         # Compile other regexs
@@ -177,41 +165,57 @@ class VcenterExporter():
 
     def setup_cust_ds(self):
 
-        # define the gauges - they have to be defined by hand for the datastores, as there is no clear pattern behind
-        self.gauge['vcenter_datastore_accessible'] = Gauge('vcenter_datastore_accessible', 'vcenter_datastore_accessible',
-                                                      ['datastore_name', 'datastore_type', 'datastore_url'])
-        self.gauge['vcenter_datastore_capacity'] = Gauge('vcenter_datastore_capacity', 'vcenter_datastore_capacity',
-                                                    ['datastore_name', 'datastore_type', 'datastore_url'])
-        self.gauge['vcenter_datastore_freespace'] = Gauge('vcenter_datastore_freespace', 'vcenter_datastore_freespace',
-                                                     ['datastore_name', 'datastore_type', 'datastore_url'])
+        # define the gauges - they have to be defined by hand for the datastores,
+        # as there is no clear pattern behind
+        self.gauge['vcenter_datastore_accessible'] = Gauge('vcenter_datastore_accessible',
+                                                           'vcenter_datastore_accessible',
+                                                           ['datastore_name',
+                                                            'datastore_type',
+                                                            'datastore_url'])
+        self.gauge['vcenter_datastore_capacity'] = Gauge('vcenter_datastore_capacity',
+                                                         'vcenter_datastore_capacity',
+                                                         ['datastore_name',
+                                                          'datastore_type',
+                                                          'datastore_url'])
+        self.gauge['vcenter_datastore_freespace'] = Gauge('vcenter_datastore_freespace',
+                                                          'vcenter_datastore_freespace',
+                                                          ['datastore_name',
+                                                           'datastore_type',
+                                                           'datastore_url'])
         self.gauge['vcenter_datastore_maintenancemode'] = Gauge('vcenter_datastore_maintenancemode',
-                                                           'vcenter_datastore_maintenancemode',
-                                                           ['datastore_name', 'datastore_type', 'datastore_url'])
+                                                                'vcenter_datastore_maintenancemode',
+                                                                ['datastore_name',
+                                                                 'datastore_type',
+                                                                 'datastore_url'])
         self.gauge['vcenter_datastore_overallstatus'] = Gauge('vcenter_datastore_overallstatus',
-                                                         'vcenter_datastore_overallstatus',
-                                                         ['datastore_name', 'datastore_type', 'datastore_url'])
- 
+                                                              'vcenter_datastore_overallstatus',
+                                                              ['datastore_name',
+                                                               'datastore_type',
+                                                               'datastore_url'])
+
         # get datastore containerview
-        if not self.container:
-            self.container = self.si.content.rootFolder
         self.view_ref = self.si.content.viewManager.CreateContainerView(
             container=self.container,
             type=[vim.Datastore],
             recursive=True
-        )                                                        
+        )
 
     def setup_versions(self):
 
-        self.gauge['vcenter_esx_node_info'] = Gauge('vcenter_esx_node_info', 'vcenter_esx_node_info',
-                                       ['hostname', 'version', 'build', 'region'])
-        self.gauge['vcenter_vcenter_node_info'] = Gauge('vcenter_vcenter_node_info', 'vcenter_vcenter_node_info',
-                                           ['hostname', 'version', 'build', 'region'])
+        self.gauge['vcenter_esx_node_info'] = Gauge('vcenter_esx_node_info',
+                                                    'vcenter_esx_node_info',
+                                                    ['hostname',
+                                                     'version', 'build', 'region'])
+        self.gauge['vcenter_vcenter_node_info'] = Gauge('vcenter_vcenter_node_info',
+                                                        'vcenter_vcenter_node_info',
+                                                        ['hostname',
+                                                         'version', 'build', 'region'])
         self.content = self.si.RetrieveContent()
         self.clusters = [cluster for cluster in
-                    self.content.viewManager.CreateContainerView(
-                        self.content.rootFolder, [vim.ComputeResource],
-                        recursive=True).view
-                    ]                                          
+                         self.content.viewManager.CreateContainerView(
+                             self.content.rootFolder, [vim.ComputeResource],
+                             recursive=True).view
+                        ]
 
     def setup_vc_health(self):
         pass
@@ -221,41 +225,32 @@ class VcenterExporter():
 
     def get_cust_vm_metrics(self):
 
-        # Get all of the vms in the system from the host_view
-        hostssystems = self.host_view.view
-
-        # build a dict to lookup the hostname by its id later
-        hostsystemsdict = {}
-        for host in hostssystems:
-            hostsystemsdict[host] = host.name
-        logging.debug(
-            'list of all available vcenter nodes and their internal id')
-        logging.debug(hostsystemsdict)
-
         # get data
-        data = collect_properties(self.si, self.view_ref, vim.VirtualMachine, self.vm_properties, True)
+        data = collect_properties(self.si, self.view_ref, vim.VirtualMachine,
+                                  self.vm_properties, True)
         self.metric_count = 0
 
-        # define the time range in seconds the metric data from the vcenter should be averaged across
-        # all based on vcenter time
+        # define the time range in seconds the metric data from the vcenter
+        #  should be averaged across all based on vcenter time
         vch_time = self.si.CurrentTime()
         start_time = vch_time - timedelta(seconds=(self.configs['main']['interval'] + 60))
         end_time = vch_time - timedelta(seconds=60)
         perf_manager = self.si.content.perfManager
 
         for item in data:
+
             try:
                 if (item["runtime.powerState"] == "poweredOn" and
                         self.regexs['openstack_match_regex'].match(item["config.annotation"]) and
                         item["runtime.host"].parent.name == self.clustername
-                        ) and not self.regexs['ignore_match_regex'].match(item["config.name"]):
+                   ) and not self.regexs['ignore_match_regex'].match(item["config.name"]):
                     logging.debug('current vm processed - ' +
                                   item["config.name"])
-
                     logging.debug('==> running on vcenter node: ' +
-                                  hostsystemsdict[item["runtime.host"]])
+                                  item["runtime.host"].name)
 
-                    # split the multi-line annotation into a dict per property (name, project-id, ...)
+                    # split the multi-line annotation into a dict
+                    # per property (name, project-id, ...)
                     annotation_lines = item["config.annotation"].split('\n')
 
                     # rename flavor: to flavor_, so that it does not break the split on : below
@@ -316,22 +311,24 @@ class VcenterExporter():
 
                             self.gauge['vcenter_' +
                                        self.counter_info.keys()[self.counter_info.values()
-                                       .index(val.id.counterId)]
+                                                                .index(val.id.counterId)]
                                        .replace('.', '_')].labels(
-                                annotations['name'],
-                                annotations['projectid'], self.datacentername,
-                                self.regexs['shorter_names_regex'].sub(
-                                    '',
-                                    hostsystemsdict[item["runtime.host"]]),
-                                item["config.instanceUuid"],
-                                item["config.guestId"],
-                                datastore,
-                                metric_detail).set(val.value[0])
+                                           annotations['name'],
+                                           annotations['projectid'], self.datacentername,
+                                           self.regexs['shorter_names_regex'].sub(
+                                               '',
+                                               item["runtime.host"].name),
+                                           item["config.instanceUuid"],
+                                           item["config.guestId"],
+                                           datastore,
+                                           metric_detail).set(val.value[0])
                     logging.debug('==> gauge loop end: %s' % datetime.now())
+                    logging.debug("collected data for " + item['config.name'])
 
+                else:
+                    logging.debug("didn't collect infor for " + item["config.name"] +
+                                  " didn't meet requirements")
                 self.metric_count += 1
-
-                logging.info("collected data for " + item['config.name'])
 
             except IndexError as e:
                 logging.info("couldn't get perf data for " + item['config.name'])
@@ -339,11 +336,12 @@ class VcenterExporter():
     def get_cust_ds_metrics(self):
 
         # get data
-        data = collect_properties(self.si, self.view_ref, vim.Datastore, self.datastore_properties, True)
+        data = collect_properties(self.si, self.view_ref, vim.Datastore,
+                                  self.datastore_properties, True)
         self.metric_count = 0
 
-        # define the time range in seconds the metric data from the vcenter should be averaged across
-        # all based on vcenter time
+        # define the time range in seconds the metric data from the
+        # vcenter should be averaged across all based on vcenter time
         vch_time = self.si.CurrentTime()
         start_time = vch_time - timedelta(seconds=(self.configs['main']['interval'] + 60))
         end_time = vch_time - timedelta(seconds=60)
@@ -393,16 +391,26 @@ class VcenterExporter():
 
                 # set the gauges for the datastore properties
                 logging.debug('==> gauge start: %s' % datetime.now())
-                self.gauge['vcenter_datastore_accessible'].labels(item["summary.name"], item["summary.type"],
-                                                             item["summary.url"]).set(number_accessible)
-                self.gauge['vcenter_datastore_capacity'].labels(item["summary.name"], item["summary.type"],
-                                                           item["summary.url"]).set(item["summary.capacity"])
-                self.gauge['vcenter_datastore_freespace'].labels(item["summary.name"], item["summary.type"],
-                                                            item["summary.url"]).set(item["summary.freeSpace"])
-                self.gauge['vcenter_datastore_maintenancemode'].labels(item["summary.name"], item["summary.type"],
-                                                                  item["summary.url"]).set(number_maintenance_mode)
-                self.gauge['vcenter_datastore_overallstatus'].labels(item["summary.name"], item["summary.type"],
-                                                                item["summary.url"]).set(number_overall_status)
+                self.gauge['vcenter_datastore_accessible'].labels(item["summary.name"],
+                                                                  item["summary.type"],
+                                                                  item["summary.url"]
+                                                                 ).set(number_accessible)
+                self.gauge['vcenter_datastore_capacity'].labels(item["summary.name"],
+                                                                item["summary.type"],
+                                                                item["summary.url"]
+                                                               ).set(item["summary.capacity"])
+                self.gauge['vcenter_datastore_freespace'].labels(item["summary.name"],
+                                                                 item["summary.type"],
+                                                                 item["summary.url"]
+                                                                ).set(item["summary.freeSpace"])
+                self.gauge['vcenter_datastore_maintenancemode'].labels(item["summary.name"],
+                                                                       item["summary.type"],
+                                                                       item["summary.url"]
+                                                                      ).set(number_maintenance_mode)
+                self.gauge['vcenter_datastore_overallstatus'].labels(item["summary.name"],
+                                                                     item["summary.type"],
+                                                                     item["summary.url"]
+                                                                    ).set(number_overall_status)
                 logging.debug('==> gauge end: %s' % datetime.now())
 
                 self.metric_count += 1
@@ -418,8 +426,8 @@ class VcenterExporter():
 
         logging.debug(self.configs['main']['host'] + ": " + self.content.about.version)
         self.gauge['vcenter_vcenter_node_info'].labels(self.configs['main']['host'],
-                                               self.content.about.version,
-                                               self.content.about.build, region).set(1)
+                                                       self.content.about.version,
+                                                       self.content.about.build, region).set(1)
         self.metric_count += 1
 
         logging.debug('get version information for each esx host')
