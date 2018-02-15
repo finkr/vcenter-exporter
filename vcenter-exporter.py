@@ -441,7 +441,7 @@ class VcenterExporter():
                     self.metric_count += 1
 
                 except Exception as e:
-                    logging.debug("Couldn't get information for host: " + host)
+                    logging.debug("Couldn't get information for host: " + host.name)
 
     def get_vc_health_metrics(self):
         pass
