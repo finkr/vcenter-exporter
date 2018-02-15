@@ -425,11 +425,15 @@ class VcenterExporter():
         logging.debug('get version information for each esx host')
         for cluster in self.clusters:
             for host in cluster.host:
-                logging.debug(host.name + ": " + host.config.product.version)
-                self.gauge['vcenter_esx_node_info'].labels(host.name,
-                                                   host.config.product.version,
-                                                   host.config.product.build, region).set(1)
-                self.metric_count += 1
+                try:
+                    logging.debug(host.name + ": " + host.config.product.version)
+                    self.gauge['vcenter_esx_node_info'].labels(host.name,
+                                                       host.config.product.version,
+                                                       host.config.product.build, region).set(1)
+                    self.metric_count += 1
+
+                except Exception as e:
+                    logging.debug("Couldn't get information for host: " + host)
 
     def get_vc_health_metrics(self):
         pass
