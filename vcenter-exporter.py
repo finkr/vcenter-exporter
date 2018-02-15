@@ -84,7 +84,7 @@ class VcenterExporter():
         try:
             start_http_server(int(self.configs['main']['listen_port']))
         except Exception as e:
-            print("Couldn't start exporter http:" + str(e))
+            logging.debug("Couldn't start exporter http:" + str(e))
 
         # vCenter preparations
         # check for insecure ssl option
@@ -331,7 +331,7 @@ class VcenterExporter():
                 self.metric_count += 1
 
             except IndexError as e:
-                logging.info("couldn't get perf data for " + item['config.name'])
+                logging.info("couldn't get perf data: " + str(e))
 
     def get_cust_ds_metrics(self):
 
@@ -416,7 +416,7 @@ class VcenterExporter():
                 self.metric_count += 1
 
             except IndexError:
-                logging.info("couldn't get perf data for a datastore")
+                logging.info("couldn't get perf data.")
 
     def get_versions_metrics(self):
 
@@ -441,7 +441,7 @@ class VcenterExporter():
                     self.metric_count += 1
 
                 except Exception as e:
-                    logging.debug("Couldn't get information for a host")
+                    logging.debug("Couldn't get information for a host: " + str(e))
 
     def get_vc_health_metrics(self):
         pass
