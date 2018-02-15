@@ -416,7 +416,7 @@ class VcenterExporter():
                 self.metric_count += 1
 
             except IndexError:
-                logging.info("couldn't get perf data for " + item['config.name'])
+                logging.info("couldn't get perf data for a datastore")
 
     def get_versions_metrics(self):
 
@@ -441,7 +441,7 @@ class VcenterExporter():
                     self.metric_count += 1
 
                 except Exception as e:
-                    logging.debug("Couldn't get information for host: " + host.name)
+                    logging.debug("Couldn't get information for a host")
 
     def get_vc_health_metrics(self):
         pass
