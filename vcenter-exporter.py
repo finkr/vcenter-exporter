@@ -326,11 +326,11 @@ class VcenterExporter():
                     logging.debug("collected data for " + item['config.name'])
 
                 else:
-                    logging.debug("didn't collect infor for " + item["config.name"] +
+                    logging.debug("didn't collect info for " + item['config.name'] +
                                   " didn't meet requirements")
                 self.metric_count += 1
 
-            except IndexError as e:
+            except Exception as e:
                 logging.info("couldn't get perf data: " + str(e))
 
     def get_cust_ds_metrics(self):
@@ -415,8 +415,8 @@ class VcenterExporter():
 
                 self.metric_count += 1
 
-            except IndexError:
-                logging.info("couldn't get perf data.")
+            except Exception as e:
+                logging.info("Couldn't get perf data: " + str(e))
 
     def get_versions_metrics(self):
 
