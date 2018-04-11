@@ -120,7 +120,7 @@ class VcenterExporter():
 
             full_name = '.'.join([vm_counter_id.groupInfo.key, vm_counter_id.nameInfo.key,
                                   vm_counter_id.rollupType])
-            logging.debug(full_name + ": ", str(vm_counter_id.key))
+            logging.debug(full_name + ": %s", str(vm_counter_id.key))
             self.counter_info[full_name] = vm_counter_id.key
 
         selected_metrics = config.get('main').get('vm_metrics')
@@ -329,6 +329,10 @@ class VcenterExporter():
                     logging.debug("didn't collect info for " + item['config.name'] +
                                   " didn't meet requirements")
                 self.metric_count += 1
+
+            # some vms do not have config.name define - we are not interested in them and can ignore them
+            except KeyError as e:
+                logging.debug("property not defined for vm: " + str(e))
 
             except Exception as e:
                 logging.info("couldn't get perf data: " + str(e))
