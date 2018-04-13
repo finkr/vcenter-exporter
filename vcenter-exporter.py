@@ -20,7 +20,7 @@ from datetime import timedelta, datetime
 class VcenterExporter():
 
     # Supported exporter types - Checked on CLI
-    supported_types = ['CUSTVM', 'CUSTDS', 'VERSIONS',
+    supported_types = ['CUSTVM', 'CUSTDS', 'VERSIONSANDAPI',
                        'INFRAESX', 'VCHEALTH']
 
     # vcenter connection defaults
@@ -46,6 +46,8 @@ class VcenterExporter():
         self.counter_ids_to_collect = []
         self.regexs = {}
         self.metric_count = 0
+        if exporter_type == "VERSIONSANDAPI":
+            self.sessions_dict = {}
 
         # List of properties we want for VMs and datastores
         self.vm_properties = [
@@ -63,7 +65,7 @@ class VcenterExporter():
         self.function_list = {
             "CUSTVM": [self.setup_cust_vm, self.get_cust_vm_metrics],
             "CUSTDS": [self.setup_cust_ds, self.get_cust_ds_metrics],
-            "VERSIONS": [self.setup_versions, self.get_versions_metrics],
+            "VERSIONSANDAPI": [self.setup_versions_and_api, self.get_versions_and_api_metrics],
             "VCHEALTH": [self.setup_vc_health, self.get_vc_health_metrics],
             "INFRAESX": [self.setup_infra_esx, self.get_infra_esx_metrics]
         }
@@ -200,7 +202,7 @@ class VcenterExporter():
             recursive=True
         )
 
-    def setup_versions(self):
+    def setup_versions_and_api(self):
 
         self.gauge['vcenter_esx_node_info'] = Gauge('vcenter_esx_node_info',
                                                     'vcenter_esx_node_info',
@@ -210,12 +212,16 @@ class VcenterExporter():
                                                         'vcenter_vcenter_node_info',
                                                         ['hostname',
                                                          'version', 'build', 'region'])
+        self.gauge['vcenter_vcenter_api_session_info'] = Gauge('vcenter_vcenter_api_session_info',
+                                                               'vcenter_vcenter_api_session_info',
+                                                               ['session_key', 'userName', 
+                                                                'ipAddress', 'userAgent'])
         self.content = self.si.RetrieveContent()
         self.clusters = [cluster for cluster in
                          self.content.viewManager.CreateContainerView(
                              self.content.rootFolder, [vim.ComputeResource],
                              recursive=True).view
-                        ]
+                         ]
 
     def setup_vc_health(self):
         pass
@@ -233,7 +239,8 @@ class VcenterExporter():
         # define the time range in seconds the metric data from the vcenter
         #  should be averaged across all based on vcenter time
         vch_time = self.si.CurrentTime()
-        start_time = vch_time - timedelta(seconds=(self.configs['main']['interval'] + 60))
+        start_time = vch_time - \
+            timedelta(seconds=(self.configs['main']['interval'] + 60))
         end_time = vch_time - timedelta(seconds=60)
         perf_manager = self.si.content.perfManager
 
@@ -243,7 +250,7 @@ class VcenterExporter():
                 if (item["runtime.powerState"] == "poweredOn" and
                         self.regexs['openstack_match_regex'].match(item["config.annotation"]) and
                         item["runtime.host"].parent.name == self.clustername
-                   ) and not self.regexs['ignore_match_regex'].match(item["config.name"]):
+                        ) and not self.regexs['ignore_match_regex'].match(item["config.name"]):
                     logging.debug('current vm processed - ' +
                                   item["config.name"])
                     logging.debug('==> running on vcenter node: ' +
@@ -257,7 +264,7 @@ class VcenterExporter():
                     annotation_lines = [
                         w.replace('flavor:', 'flavor_')
                         for w in annotation_lines
-                        ]
+                    ]
 
                     # the filter is for filtering out empty lines
                     annotations = dict(
@@ -265,13 +272,14 @@ class VcenterExporter():
                         for s in filter(None, annotation_lines))
 
                     # datastore name
-                    datastore = item["summary.config.vmPathName"].split('[', 1)[1].split(']')[0]
+                    datastore = item["summary.config.vmPathName"].split('[', 1)[1].split(']')[
+                        0]
 
                     # get a list of metricids for this vm in preparation for the stats query
                     metric_ids = [
                         vim.PerformanceManager.MetricId(
                             counterId=i, instance="*") for i in self.counter_ids_to_collect
-                        ]
+                    ]
 
                     # query spec for the metric stats query, the intervalId is the default one
                     logging.debug(
@@ -347,7 +355,8 @@ class VcenterExporter():
         # define the time range in seconds the metric data from the
         # vcenter should be averaged across all based on vcenter time
         vch_time = self.si.CurrentTime()
-        start_time = vch_time - timedelta(seconds=(self.configs['main']['interval'] + 60))
+        start_time = vch_time - \
+            timedelta(seconds=(self.configs['main']['interval'] + 60))
         end_time = vch_time - timedelta(seconds=60)
 
         for item in data:
@@ -374,7 +383,8 @@ class VcenterExporter():
                 else:
                     # fallback to note if we do not yet catch a value
                     number_maintenance_mode = -1
-                    logging.info('unexpected maintenanceMode for datastore ' + item["summary.name"])
+                    logging.info(
+                        'unexpected maintenanceMode for datastore ' + item["summary.name"])
                 logging.debug('==> type: ' +
                               str(item["summary.type"]))
                 logging.debug('==> url: ' +
@@ -391,30 +401,31 @@ class VcenterExporter():
                 else:
                     # fallback to note if we do not yet catch a value
                     number_overall_status = -1
-                    logging.info('unexpected overallStatus for datastore ' + item["summary.name"])
+                    logging.info(
+                        'unexpected overallStatus for datastore ' + item["summary.name"])
 
                 # set the gauges for the datastore properties
                 logging.debug('==> gauge start: %s' % datetime.now())
                 self.gauge['vcenter_datastore_accessible'].labels(item["summary.name"],
                                                                   item["summary.type"],
                                                                   item["summary.url"]
-                                                                 ).set(number_accessible)
+                                                                  ).set(number_accessible)
                 self.gauge['vcenter_datastore_capacity'].labels(item["summary.name"],
                                                                 item["summary.type"],
                                                                 item["summary.url"]
-                                                               ).set(item["summary.capacity"])
+                                                                ).set(item["summary.capacity"])
                 self.gauge['vcenter_datastore_freespace'].labels(item["summary.name"],
                                                                  item["summary.type"],
                                                                  item["summary.url"]
-                                                                ).set(item["summary.freeSpace"])
+                                                                 ).set(item["summary.freeSpace"])
                 self.gauge['vcenter_datastore_maintenancemode'].labels(item["summary.name"],
                                                                        item["summary.type"],
                                                                        item["summary.url"]
-                                                                      ).set(number_maintenance_mode)
+                                                                       ).set(number_maintenance_mode)
                 self.gauge['vcenter_datastore_overallstatus'].labels(item["summary.name"],
                                                                      item["summary.type"],
                                                                      item["summary.url"]
-                                                                    ).set(number_overall_status)
+                                                                     ).set(number_overall_status)
                 logging.debug('==> gauge end: %s' % datetime.now())
 
                 self.metric_count += 1
@@ -422,13 +433,14 @@ class VcenterExporter():
             except Exception as e:
                 logging.info("Couldn't get perf data: " + str(e))
 
-    def get_versions_metrics(self):
+    def get_versions_and_api_metrics(self):
 
         region = self.configs['main']['host'].split('.')[2]
         self.metric_count = 0
         logging.debug('get clusters from content')
 
-        logging.debug(self.configs['main']['host'] + ": " + self.content.about.version)
+        logging.debug(self.configs['main']['host'] +
+                      ": " + self.content.about.version)
         self.gauge['vcenter_vcenter_node_info'].labels(self.configs['main']['host'],
                                                        self.content.about.version,
                                                        self.content.about.build, region).set(1)
@@ -438,14 +450,60 @@ class VcenterExporter():
         for cluster in self.clusters:
             for host in cluster.host:
                 try:
-                    logging.debug(host.name + ": " + host.config.product.version)
+                    logging.debug(host.name + ": " +
+                                  host.config.product.version)
                     self.gauge['vcenter_esx_node_info'].labels(host.name,
-                                                       host.config.product.version,
-                                                       host.config.product.build, region).set(1)
+                                                               host.config.product.version,
+                                                               host.config.product.build, region).set(1)
                     self.metric_count += 1
 
                 except Exception as e:
-                    logging.debug("Couldn't get information for a host: " + str(e))
+                    logging.debug(
+                        "Couldn't get information for a host: " + str(e))
+
+        # Get current session information and check with saved sessions info
+        logging.debug('getting api session information')
+
+        try:
+            current_sessions = [x for x in self.content.sessionManager.sessionList]
+        except Exception as e:
+            logging.debug('Error getting api session info' + str(e))
+
+        for session in current_sessions:
+            if self.sessions_dict.get(session.key):
+                self.sessions_dict[session.key]['callsPerInterval'] = session.callCount - \
+                    self.sessions_dict[session.key]['callsLastInterval']
+                self.sessions_dict[session.key]['callsLastInterval'] = session.callCount
+            else:
+                dict_entry = {'userName': session.userName,
+                                'ipAddress': session.ipAddress,
+                                'userAgent': session.userAgent,
+                                'callsPerInterval': 0,
+                                'callsLastInterval': session.callCount}
+                self.sessions_dict[session.key] = dict_entry
+        
+
+        # Cleanup ended sessions
+        session_keys_current = [x.key for x in current_sessions]
+        session_keys_in_dict = self.sessions_dict.keys()
+        for key in session_keys_in_dict:
+                if not key in session_keys_current:
+                    try:
+                        remove_data = self.sessions_dict.pop(key)
+                        self.gauge['vcenter_vcenter_api_session_info'].remove(
+                            key[0:8], remove_data['userName'], remove_data['ipAddress'],
+                            remove_data['userAgent']
+                        )
+                    except Exception as e:
+                        logging.debug('Error removing gauge: ' + str(e))
+
+        logging.debug('processing api session information')
+        for session in self.sessions_dict:
+            self.gauge['vcenter_vcenter_api_session_info'].labels(session[0:8], 
+                        self.sessions_dict[session]['userName'], 
+                        self.sessions_dict[session]['ipAddress'],
+                        self.sessions_dict[session]['userAgent']).set(self.sessions_dict[session]['callsPerInterval'])
+            
 
     def get_vc_health_metrics(self):
         pass
@@ -465,7 +523,8 @@ class VcenterExporter():
             loop_start_time = int(time.time())
 
             # Get the metrics
-            self.function_list[self.exporter_type][self.function_map['GETMETRICS']]()
+            self.function_list[self.exporter_type][self.function_map['GETMETRICS']](
+            )
 
             loop_end_time = int(time.time())
             logging.info('number of ' + self.exporter_type + ' we got metrics for ' +
@@ -475,7 +534,9 @@ class VcenterExporter():
             # this is the time we sleep to fill the loop runtime until it reaches "interval"
             # the 0.9 makes sure we have some overlap to the last interval to avoid gaps in
             # metrics coverage (i.e. we get the metrics quicker than the averaging time)
-            loop_sleep_time = 0.9 * self.configs['main']['interval'] - (loop_end_time - loop_start_time)
+            loop_sleep_time = 0.9 * \
+                self.configs['main']['interval'] - \
+                (loop_end_time - loop_start_time)
             if loop_sleep_time < 0:
                 logging.warn('getting the metrics takes around ' + str(
                     self.configs['main']['interval']) + ' seconds or longer - please increase the interval setting')
