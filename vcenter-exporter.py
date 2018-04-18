@@ -46,7 +46,7 @@ class VcenterExporter():
         self.counter_ids_to_collect = []
         self.regexs = {}
         self.metric_count = 0
-        if exporter_type == "VERSIONSANDAPI":
+        if sellf.exporter_type == "VERSIONSANDAPI":
             self.sessions_dict = {}
 
         # List of properties we want for VMs and datastores
