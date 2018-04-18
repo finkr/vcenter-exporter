@@ -59,6 +59,10 @@ class VcenterExporter():
             "summary.maintenanceMode", "summary.name",
             "summary.type", "summary.url", "overallStatus"
         ]
+        self.host_properties =[
+            "summary.config.name", "config.product.version",
+            "config.product.build"
+        ]
 
         # exporter type to function dictionary:  Call appropriate functions for each exporter type
         self.function_map = {"SETGAUGES": 0, "GETMETRICS": 1}
@@ -222,6 +226,11 @@ class VcenterExporter():
                              self.content.rootFolder, [vim.ComputeResource],
                              recursive=True).view
                          ]
+        self.hosts = self.si.content.viewManager.CreateContainerView(
+            container=self.container,
+            type=[vim.HostSystem],
+            recursive=True
+        )
 
     def setup_vc_health(self):
         pass
@@ -447,19 +456,30 @@ class VcenterExporter():
         self.metric_count += 1
 
         logging.debug('get version information for each esx host')
-        for cluster in self.clusters:
-            for host in cluster.host:
-                try:
-                    logging.debug(host.name + ": " +
-                                  host.config.product.version)
-                    self.gauge['vcenter_esx_node_info'].labels(host.name,
-                                                               host.config.product.version,
-                                                               host.config.product.build, region).set(1)
-                    self.metric_count += 1
 
-                except Exception as e:
-                    logging.debug(
-                        "Couldn't get information for a host: " + str(e))
+        
+#        for cluster in self.clusters:
+#            for host in cluster.host:
+        host_data = collect_properties(self.si, self.hosts,
+                                    vim.HostSystem, self.host_properties, True)
+        for host in host_data:
+            try:
+                # logging.debug(host.name + ": " +
+                #                 host.config.product.version)
+                # self.gauge['vcenter_esx_node_info'].labels(host.name,
+                #                                             host.config.product.version,
+                #                                             host.config.product.build, region).set(1)
+
+                logging.debug(host['summary.config.name'] + ": " +
+                                host['config.product.version'])
+                self.gauge['vcenter_esx_node_info'].labels(host['summary.config.name'],
+                                                            host['config.product.version'],
+                                                            host['config.product.build'], region).set(1)
+                self.metric_count += 1
+
+            except Exception as e:
+                logging.debug(
+                    "Couldn't get information for a host: " + str(e))
 
         # Get current session information and check with saved sessions info
         logging.debug('getting api session information')
