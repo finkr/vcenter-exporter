@@ -457,19 +457,10 @@ class VcenterExporter():
 
         logging.debug('get version information for each esx host')
 
-        
-#        for cluster in self.clusters:
-#            for host in cluster.host:
         host_data = collect_properties(self.si, self.hosts,
                                     vim.HostSystem, self.host_properties, True)
         for host in host_data:
             try:
-                # logging.debug(host.name + ": " +
-                #                 host.config.product.version)
-                # self.gauge['vcenter_esx_node_info'].labels(host.name,
-                #                                             host.config.product.version,
-                #                                             host.config.product.build, region).set(1)
-
                 logging.debug(host['summary.config.name'] + ": " +
                                 host['config.product.version'])
                 self.gauge['vcenter_esx_node_info'].labels(host['summary.config.name'],
