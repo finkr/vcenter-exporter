@@ -63,7 +63,6 @@ def collect_properties(service_instance, view_ref, obj_type, path_set=None,
         property_spec.all = True
 
     property_spec.pathSet = path_set
-
     # Add the object and property specification to the
     # property filter specification
     filter_spec = vmodl.query.PropertyCollector.FilterSpec()
