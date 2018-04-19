@@ -48,6 +48,7 @@ class VcenterExporter():
         self.metric_count = 0
         if self.exporter_type == "VERSIONSANDAPI":
             self.sessions_dict = {}
+            self.configs['main']['interval'] = 120
 
         # List of properties we want for VMs and datastores
         self.vm_properties = [
