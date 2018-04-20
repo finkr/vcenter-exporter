@@ -219,7 +219,7 @@ class VcenterExporter():
                                                          'version', 'build', 'region'])
         self.gauge['vcenter_vcenter_api_session_info'] = Gauge('vcenter_vcenter_api_session_info',
                                                                'vcenter_vcenter_api_session_info',
-                                                               ['session_key', 'userName', 
+                                                               ['session_key', 'hostname', 'userName', 
                                                                 'ipAddress', 'userAgent'])
         self.content = self.si.RetrieveContent()
         self.clusters = [cluster for cluster in
@@ -511,7 +511,8 @@ class VcenterExporter():
 
         logging.debug('processing api session information')
         for session in self.sessions_dict:
-            self.gauge['vcenter_vcenter_api_session_info'].labels(session[0:8], 
+            self.gauge['vcenter_vcenter_api_session_info'].labels(session[0:8],
+                        self.configs['main']['host'], 
                         self.sessions_dict[session]['userName'], 
                         self.sessions_dict[session]['ipAddress'],
                         self.sessions_dict[session]['userAgent']).set(self.sessions_dict[session]['callsPerInterval'])
