@@ -483,8 +483,8 @@ class VcenterExporter():
 
         for session in current_sessions:
             if self.sessions_dict.get(session.key):
-                self.sessions_dict[session.key]['callsPerInterval'] = session.callCount - \
-                    self.sessions_dict[session.key]['callsLastInterval']
+                self.sessions_dict[session.key]['callsPerInterval'] = \
+                    session.callCount - self.sessions_dict[session.key]['callsLastInterval']
                 self.sessions_dict[session.key]['callsLastInterval'] = session.callCount
             else:
                 dict_entry = {'userName': session.userName,
