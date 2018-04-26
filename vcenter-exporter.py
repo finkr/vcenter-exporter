@@ -498,12 +498,15 @@ class VcenterExporter():
         # Cleanup ended sessions
         session_keys_current = [x.key for x in current_sessions]
         session_keys_in_dict = self.sessions_dict.keys()
+
         for key in session_keys_in_dict:
                 if not key in session_keys_current:
                     try:
                         remove_data = self.sessions_dict.pop(key)
-                        self.gauge['vcenter_vcenter_api_session_info'].remove(
-                            key[0:8], remove_data['userName'], remove_data['ipAddress'],
+                        self.gauge['vcenter_vcenter_api_session_info'].remove(key[0:8], 
+                            self.configs['main']['host'],
+                            remove_data['userName'], 
+                            remove_data['ipAddress'],
                             remove_data['userAgent']
                         )
                     except Exception as e:
