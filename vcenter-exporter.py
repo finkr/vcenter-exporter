@@ -221,6 +221,11 @@ class VcenterExporter():
                                                                'vcenter_vcenter_api_session_info',
                                                                ['session_key', 'hostname', 'userName', 
                                                                 'ipAddress', 'userAgent'])
+
+        self.gauge['vcenter_vcenter_api_active_count'] = Gauge('vcenter_vcenter_api_active_count',
+                                                                'vcenter_vcenter_api_active_count',
+                                                                ['hostname'])
+
         self.content = self.si.RetrieveContent()
         self.clusters = [cluster for cluster in
                          self.content.viewManager.CreateContainerView(
@@ -519,7 +524,10 @@ class VcenterExporter():
                         self.sessions_dict[session]['userName'], 
                         self.sessions_dict[session]['ipAddress'],
                         self.sessions_dict[session]['userAgent']).set(self.sessions_dict[session]['callsPerInterval'])
-            
+
+        self.gauge['vcenter_vcenter_api_active_count'].labels(self.configs['main']['host']).set(
+            len(current_sessions)
+        )  
 
     def get_vc_health_metrics(self):
         pass
