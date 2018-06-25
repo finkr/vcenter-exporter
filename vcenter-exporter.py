@@ -335,8 +335,7 @@ class VcenterExporter():
                                 metric_detail = val.id.instance
 
                             self.gauge['vcenter_' +
-                                        list(self.counter_info.keys())[metric_id]
-                                       self.counter_info.keys()[self.counter_info.values()
+                                       list(self.counter_info.keys())[list(self.counter_info.values())
                                                                  .index(val.id.counterId)]
                                        .replace('.', '_')].labels(
                                            annotations['name'],
