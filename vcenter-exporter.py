@@ -114,9 +114,23 @@ class VcenterExporter():
         datacenter = content.rootFolder.childEntity[0]
         self.datacentername = datacenter.name
 
+                # compile a regex for trying to filter out openstack generated vms
+        # they all have the "name:" field set
+        self.regexs['openstack_match_regex'] = re.compile("^name")
+
+        # Compile other regexs
+        #for regular_expression in ['shorter_names_regex', 'host_match_regex', 'ignore_match_regex']:
+        for regular_expression in ['shorter_names_regex', 'ignore_vm_match_regex', 'ignore_ds_match_regex']:
+            if self.configs['main'][regular_expression]:
+                self.regexs[regular_expression] = re.compile(
+                    self.configs['main'][regular_expression]
+                )
+            else:
+                self.regexs[regular_expression] = re.compile('')
+
     def setup_cust_vm(self):
 
-        self.clustername = self.configs['main']['cluster_name']
+        #self.clustername = self.configs['main']['cluster_name']
         content = self.si.content
         perf_manager = content.perfManager
         vm_counter_ids = perf_manager.QueryPerfCounterByLevel(level=4)
@@ -145,19 +159,6 @@ class VcenterExporter():
                 'vmware_name', 'project_id', 'vcenter_name', 'vcenter_node',
                 'instance_uuid', 'guest_id', 'datastore', 'metric_detail'
             ])
-
-        # compile a regex for trying to filter out openstack generated vms
-        # they all have the "name:" field set
-        self.regexs['openstack_match_regex'] = re.compile("^name")
-
-        # Compile other regexs
-        for regular_expression in ['shorter_names_regex', 'host_match_regex', 'ignore_match_regex']:
-            if self.configs['main'][regular_expression]:
-                self.regexs[regular_expression] = re.compile(
-                    self.configs['main'][regular_expression]
-                )
-            else:
-                self.regexs[regular_expression] = re.compile('')
 
         # get all the data regarding vcenter hosts
         self.host_view = content.viewManager.CreateContainerView(
@@ -264,8 +265,9 @@ class VcenterExporter():
             try:
                 if (item["runtime.powerState"] == "poweredOn" and
                         self.regexs['openstack_match_regex'].match(item["config.annotation"]) and
-                        item["runtime.host"].parent.name == self.clustername
-                        ) and not self.regexs['ignore_match_regex'].match(item["config.name"]):
+                        'production' in item["runtime.host"].parent.name
+#                        item["runtime.host"].parent.name == self.clustername
+                        ) and not self.regexs['ignore_vm_match_regex'].match(item["config.name"]):
                     logging.debug('current vm processed - ' +
                                   item["config.name"])
                     logging.debug('==> running on vcenter node: ' +
@@ -333,8 +335,9 @@ class VcenterExporter():
                                 metric_detail = val.id.instance
 
                             self.gauge['vcenter_' +
+                                        list(self.counter_info.keys())[metric_id]
                                        self.counter_info.keys()[self.counter_info.values()
-                                                                .index(val.id.counterId)]
+                                                                 .index(val.id.counterId)]
                                        .replace('.', '_')].labels(
                                            annotations['name'],
                                            annotations['projectid'], self.datacentername,
@@ -375,78 +378,79 @@ class VcenterExporter():
         end_time = vch_time - timedelta(seconds=60)
 
         for item in data:
-            try:
-                logging.debug('current datastore processed - ' +
-                              item["summary.name"])
+            if not self.regexs['ignore_ds_match_regex'].match(item["summary.name"]):
+                try:
+                    logging.debug('current datastore processed - ' +
+                                item["summary.name"])
 
-                logging.debug('==> accessible: ' +
-                              str(item["summary.accessible"]))
-                # convert strings to numbers, so that we can generate a prometheus metric from them
-                if item["summary.accessible"]:
-                    number_accessible = 1
-                else:
-                    number_accessible = 0
-                logging.debug('==> capacity: ' +
-                              str(item["summary.capacity"]))
-                logging.debug('==> freeSpace: ' +
-                              str(item["summary.freeSpace"]))
-                logging.debug('==> maintenanceMode: ' +
-                              str(item["summary.maintenanceMode"]))
-                # convert strings to numbers, so that we can generate a prometheus metric from them
-                if item["summary.maintenanceMode"] == "normal":
-                    number_maintenance_mode = 0
-                else:
-                    # fallback to note if we do not yet catch a value
-                    number_maintenance_mode = -1
-                    logging.info(
-                        'unexpected maintenanceMode for datastore ' + item["summary.name"])
-                logging.debug('==> type: ' +
-                              str(item["summary.type"]))
-                logging.debug('==> url: ' +
-                              str(item["summary.url"]))
-                logging.debug('==> overallStatus: ' +
-                              str(item["overallStatus"]))
-                # convert strings to numbers, so that we can generate a prometheus metric from them
-                if item["overallStatus"] == "green":
-                    number_overall_status = 0
-                elif item["overallStatus"] == "yellow":
-                    number_overall_status = 1
-                elif item["overallStatus"] == "red":
-                    number_overall_status = 2
-                else:
-                    # fallback to note if we do not yet catch a value
-                    number_overall_status = -1
-                    logging.info(
-                        'unexpected overallStatus for datastore ' + item["summary.name"])
+                    logging.debug('==> accessible: ' +
+                                str(item["summary.accessible"]))
+                    # convert strings to numbers, so that we can generate a prometheus metric from them
+                    if item["summary.accessible"]:
+                        number_accessible = 1
+                    else:
+                        number_accessible = 0
+                    logging.debug('==> capacity: ' +
+                                str(item["summary.capacity"]))
+                    logging.debug('==> freeSpace: ' +
+                                str(item["summary.freeSpace"]))
+                    logging.debug('==> maintenanceMode: ' +
+                                str(item["summary.maintenanceMode"]))
+                    # convert strings to numbers, so that we can generate a prometheus metric from them
+                    if item["summary.maintenanceMode"] == "normal":
+                        number_maintenance_mode = 0
+                    else:
+                        # fallback to note if we do not yet catch a value
+                        number_maintenance_mode = -1
+                        logging.info(
+                            'unexpected maintenanceMode for datastore ' + item["summary.name"])
+                    logging.debug('==> type: ' +
+                                str(item["summary.type"]))
+                    logging.debug('==> url: ' +
+                                str(item["summary.url"]))
+                    logging.debug('==> overallStatus: ' +
+                                str(item["overallStatus"]))
+                    # convert strings to numbers, so that we can generate a prometheus metric from them
+                    if item["overallStatus"] == "green":
+                        number_overall_status = 0
+                    elif item["overallStatus"] == "yellow":
+                        number_overall_status = 1
+                    elif item["overallStatus"] == "red":
+                        number_overall_status = 2
+                    else:
+                        # fallback to note if we do not yet catch a value
+                        number_overall_status = -1
+                        logging.info(
+                            'unexpected overallStatus for datastore ' + item["summary.name"])
 
-                # set the gauges for the datastore properties
-                logging.debug('==> gauge start: %s' % datetime.now())
-                self.gauge['vcenter_datastore_accessible'].labels(item["summary.name"],
-                                                                  item["summary.type"],
-                                                                  item["summary.url"]
-                                                                  ).set(number_accessible)
-                self.gauge['vcenter_datastore_capacity'].labels(item["summary.name"],
-                                                                item["summary.type"],
-                                                                item["summary.url"]
-                                                                ).set(item["summary.capacity"])
-                self.gauge['vcenter_datastore_freespace'].labels(item["summary.name"],
-                                                                 item["summary.type"],
-                                                                 item["summary.url"]
-                                                                 ).set(item["summary.freeSpace"])
-                self.gauge['vcenter_datastore_maintenancemode'].labels(item["summary.name"],
-                                                                       item["summary.type"],
-                                                                       item["summary.url"]
-                                                                       ).set(number_maintenance_mode)
-                self.gauge['vcenter_datastore_overallstatus'].labels(item["summary.name"],
-                                                                     item["summary.type"],
-                                                                     item["summary.url"]
-                                                                     ).set(number_overall_status)
-                logging.debug('==> gauge end: %s' % datetime.now())
+                    # set the gauges for the datastore properties
+                    logging.debug('==> gauge start: %s' % datetime.now())
+                    self.gauge['vcenter_datastore_accessible'].labels(item["summary.name"],
+                                                                    item["summary.type"],
+                                                                    item["summary.url"]
+                                                                    ).set(number_accessible)
+                    self.gauge['vcenter_datastore_capacity'].labels(item["summary.name"],
+                                                                    item["summary.type"],
+                                                                    item["summary.url"]
+                                                                    ).set(item["summary.capacity"])
+                    self.gauge['vcenter_datastore_freespace'].labels(item["summary.name"],
+                                                                    item["summary.type"],
+                                                                    item["summary.url"]
+                                                                    ).set(item["summary.freeSpace"])
+                    self.gauge['vcenter_datastore_maintenancemode'].labels(item["summary.name"],
+                                                                        item["summary.type"],
+                                                                        item["summary.url"]
+                                                                        ).set(number_maintenance_mode)
+                    self.gauge['vcenter_datastore_overallstatus'].labels(item["summary.name"],
+                                                                        item["summary.type"],
+                                                                        item["summary.url"]
+                                                                        ).set(number_overall_status)
+                    logging.debug('==> gauge end: %s' % datetime.now())
 
-                self.metric_count += 1
+                    self.metric_count += 1
 
-            except Exception as e:
-                logging.info("Couldn't get perf data: " + str(e))
+                except Exception as e:
+                    logging.info("Couldn't get perf data: " + str(e))
 
     def get_versions_and_api_metrics(self):
 
