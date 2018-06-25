@@ -114,7 +114,7 @@ class VcenterExporter():
         datacenter = content.rootFolder.childEntity[0]
         self.datacentername = datacenter.name
 
-                # compile a regex for trying to filter out openstack generated vms
+        # compile a regex for trying to filter out openstack generated vms
         # they all have the "name:" field set
         self.regexs['openstack_match_regex'] = re.compile("^name")
 
@@ -130,7 +130,6 @@ class VcenterExporter():
 
     def setup_cust_vm(self):
 
-        #self.clustername = self.configs['main']['cluster_name']
         content = self.si.content
         perf_manager = content.perfManager
         vm_counter_ids = perf_manager.QueryPerfCounterByLevel(level=4)
@@ -266,7 +265,6 @@ class VcenterExporter():
                 if (item["runtime.powerState"] == "poweredOn" and
                         self.regexs['openstack_match_regex'].match(item["config.annotation"]) and
                         'production' in item["runtime.host"].parent.name
-#                        item["runtime.host"].parent.name == self.clustername
                         ) and not self.regexs['ignore_vm_match_regex'].match(item["config.name"]):
                     logging.debug('current vm processed - ' +
                                   item["config.name"])
