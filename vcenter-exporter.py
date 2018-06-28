@@ -576,9 +576,9 @@ if __name__ == "__main__":
     # config file parsing
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-c", "--config", help="Specify config file", metavar="FILE", required=True)
+        "-c", "--config", help="Specify config file", metavar="FILE", default="config.yaml")
     parser.add_argument(
-        "-t", "--type", help="The type of exporter [VM, versions, datastores]", required=True)
+        "-t", "--type", help="The type of exporter [VM, versions, datastores]", default="versionsandapi")
     args, remaining_argv = parser.parse_known_args()
     config = YamlConfig(args.config, VcenterExporter.defaults)
 
