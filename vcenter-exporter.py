@@ -26,12 +26,12 @@ class VcenterExporter():
     # vcenter connection defaults
     defaults = {
         'ignore_ssl': True,
-        'port': 443,
-        'interval': 15,
-        'hostname': 'localhost',
-        'user': 'administrator@vsphere.local',
-        'password': 'password',
-        'listen_port': 9102
+        'vcenter_port': 443,
+        'vc_polling_interval': 120,
+        'vcenter_hostname': 'localhost',
+        'vcenter_user': 'administrator@vsphere.local',
+        'vcenter_password': 'password',
+        'prometheus_port': 9102
     }
 
     def __init__(self, configs, exporter_type):
@@ -79,9 +79,9 @@ class VcenterExporter():
         self.logger = logging.getLogger()
 
         # set default log level if not defined in config file
-        if self.configs['main']['log']:
+        if self.configs['main']['exporter_log_level']:
             self.logger.setLevel(
-                logging.getLevelName(self.configs['main']['log'].upper()))
+                logging.getLevelName(self.configs['main']['exporter_log_level'].upper()))
         else:
             self.logger.setLevel('INFO')
         format = '[%(asctime)s] [%(levelname)s] %(message)s'
@@ -89,7 +89,7 @@ class VcenterExporter():
 
         # Start http server for exported data
         try:
-            start_http_server(int(self.configs['main']['listen_port']))
+            start_http_server(int(self.configs['main']['prometheus_port']))
         except Exception as e:
             logging.debug("Couldn't start exporter http:" + str(e))
 
@@ -102,10 +102,10 @@ class VcenterExporter():
             self.context = None
 
         # Connect to the vCenter
-        self.si = connect_to_vcenter(self.configs['main']['host'],
-                                     self.configs['main']['user'],
-                                     self.configs['main']['password'],
-                                     self.configs['main']['port'],
+        self.si = connect_to_vcenter(self.configs['main']['vcenter_host'],
+                                     self.configs['main']['vcenter_user'],
+                                     self.configs['main']['vcenter_password'],
+                                     self.configs['main']['vcenter_port'],
                                      self.context)
         atexit.register(Disconnect, self.si)
         # Create attributes for Containerviews
@@ -120,7 +120,7 @@ class VcenterExporter():
 
         # Compile other regexs
         #for regular_expression in ['shorter_names_regex', 'host_match_regex', 'ignore_match_regex']:
-        for regular_expression in ['shorter_names_regex', 'ignore_vm_match_regex', 'ignore_ds_match_regex']:
+        for regular_expression in ['name_shortening_regex', 'ignore_vm_match_regex', 'ignore_ds_match_regex']:
             if self.configs['main'][regular_expression]:
                 self.regexs[regular_expression] = re.compile(
                     self.configs['main'][regular_expression]
@@ -255,7 +255,7 @@ class VcenterExporter():
         #  should be averaged across all based on vcenter time
         vch_time = self.si.CurrentTime()
         start_time = vch_time - \
-            timedelta(seconds=(self.configs['main']['interval'] + 60))
+            timedelta(seconds=(self.configs['main']['vc_polling_interval'] + 60))
         end_time = vch_time - timedelta(seconds=60)
         perf_manager = self.si.content.perfManager
 
@@ -338,7 +338,7 @@ class VcenterExporter():
                                        .replace('.', '_')].labels(
                                            annotations['name'],
                                            annotations['projectid'], self.datacentername,
-                                           self.regexs['shorter_names_regex'].sub(
+                                           self.regexs['name_shortening_regex'].sub(
                                                '',
                                                item["runtime.host"].name),
                                            item["config.instanceUuid"],
@@ -371,7 +371,7 @@ class VcenterExporter():
         # vcenter should be averaged across all based on vcenter time
         vch_time = self.si.CurrentTime()
         start_time = vch_time - \
-            timedelta(seconds=(self.configs['main']['interval'] + 60))
+            timedelta(seconds=(self.configs['main']['vc_polling_interval'] + 60))
         end_time = vch_time - timedelta(seconds=60)
 
         for item in data:
@@ -451,13 +451,13 @@ class VcenterExporter():
 
     def get_versions_and_api_metrics(self):
 
-        region = self.configs['main']['host'].split('.')[2]
+        region = self.configs['main']['vcenter_host'].split('.')[2]
         self.metric_count = 0
         logging.debug('get clusters from content')
 
-        logging.debug(self.configs['main']['host'] +
+        logging.debug(self.configs['main']['vcenter_host'] +
                       ": " + self.content.about.version)
-        self.gauge['vcenter_vcenter_node_info'].labels(self.configs['main']['host'],
+        self.gauge['vcenter_vcenter_node_info'].labels(self.configs['main']['vcenter_host'],
                                                        self.content.about.version,
                                                        self.content.about.build, region).set(1)
         self.metric_count += 1
@@ -521,12 +521,12 @@ class VcenterExporter():
         logging.debug('processing api session information')
         for session in self.sessions_dict:
             self.gauge['vcenter_vcenter_api_session_info'].labels(session[0:8],
-                        self.configs['main']['host'], 
+                        self.configs['main']['vcenter_host'], 
                         self.sessions_dict[session]['userName'], 
                         self.sessions_dict[session]['ipAddress'],
                         self.sessions_dict[session]['userAgent']).set(self.sessions_dict[session]['callsPerInterval'])
 
-        self.gauge['vcenter_vcenter_api_active_count'].labels(self.configs['main']['host']).set(
+        self.gauge['vcenter_vcenter_api_active_count'].labels(self.configs['main']['vcenter_host']).set(
             len(current_sessions)
         )  
 
@@ -560,11 +560,11 @@ class VcenterExporter():
             # the 0.9 makes sure we have some overlap to the last interval to avoid gaps in
             # metrics coverage (i.e. we get the metrics quicker than the averaging time)
             loop_sleep_time = 0.9 * \
-                self.configs['main']['interval'] - \
+                self.configs['main']['vc_polling_interval'] - \
                 (loop_end_time - loop_start_time)
             if loop_sleep_time < 0:
                 logging.warn('getting the metrics takes around ' + str(
-                    self.configs['main']['interval']) + ' seconds or longer - please increase the interval setting')
+                    self.configs['main']['vc_polling_interval']) + ' seconds or longer - please increase the interval setting')
                 loop_sleep_time = 0
 
             logging.debug('====> loop end before sleep: %s' % datetime.now())
