@@ -4,10 +4,12 @@ Generic vcenter exporter
 
 This is a vcenter exporter, which collects various metrics and information from a vCenter dependent on the provided flags.
 The current available exporter types are:
-```
-  - custvm: exports metrics for customer vms
-  - custds: exports metrics for customer datastores
-  - versions: exports versions of vcenter and esx hosts
+
+
+  - `custvm`: exports metrics for customer vms
+  - `custds`: exports metrics for customer datastores
+  - `versions`: exports versions of vcenter and esx hosts
+
 
 The metric names (for custvm and custds), which can be defined in the config file are a construct of different fields in counterids.
 The name is a construction of: counterid.groupInfo.key + "." + counterid.nameInfo.key + "." + counterid.rollupType:
@@ -21,7 +23,7 @@ an example:
   - 'virtualDisk.read.average'
   - 'virtualDisk.totalReadLatency.average'
   - 'virtualDisk.totalWriteLatency.average'
-...
+  - ...
 ```
 
 ### Openstack specific notes:
